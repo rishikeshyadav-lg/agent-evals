@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-evals"
+version = "0.1.0"
+description = "Agent-agnostic evaluation: run any agent over a fixed dataset, score it, compare variants, and report with honest statistics."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    {name = "PenguiFlow Team"},
+]
+dependencies = []
+
+[project.optional-dependencies]
+mlflow = ["mlflow>=2.10"]
+dev = [
+    "mypy>=1.8",
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/rishikeshyadav-lg/penguiflow"
+
+[tool.setuptools]
+packages = { find = { include = ["agent_evals*"] } }
+package-data = { agent_evals = ["py.typed"] }
+license-files = ["LICENSE"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["agent_evals"]
+disallow_untyped_defs = false
+ignore_missing_imports = true
+warn_unused_ignores = true
+show_error_codes = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
