@@ -185,6 +185,20 @@ report using them says so.
 
 ## Where things are
 
+The package is grouped by what each part does. You never import these paths directly — everything is
+re-exported, so `from agent_evals import ExactMatch` works wherever the module lives — but this is the
+map if you want to read the source.
+
+| Folder | What's in it |
+|---|---|
+| `core/` | The shapes everything else speaks in: cases, datasets, what a run returned, the steps it took |
+| `running/` | Running an agent over a dataset: repeats, concurrency, suites, comparing variants |
+| `scoring/` | One module per layer: the answer, the steps, speed and cost, the rules |
+| `stats/` | Turning many runs into numbers you can trust: intervals, repeatability, thresholds |
+| `reporting/` | The scorecard, run diffs, and an optional MLflow log |
+
+The tests mirror those folders, plus `contract/` for what the package as a whole promises.
+
 - `examples/agent_evals_quickstart/` — a runnable file, offline, close to the second example above.
 - `examples/agent_evals_live_langchain/` — a real LangChain agent against a live model endpoint.
 - `tests/` — 402 tests. Run them with `pip install -e ".[dev]"` then `pytest`; 385 pass and 18 skip,
