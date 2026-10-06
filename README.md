@@ -4,11 +4,10 @@ Agent-agnostic evaluation. Bring any agent (any framework, or a plain function),
 a scorer; get repeatable runs, honest statistics and a report. This package has **no required
 dependencies** and imports nothing from any agent framework.
 
-In-house, not on PyPI: install a pinned source archive, so a consumer upgrades deliberately rather than
-drifting. Replace `<owner>` with the account or organisation holding this repository.
+Not on PyPI: install a pinned source archive, so a consumer upgrades deliberately rather than drifting.
 
 ```bash
-uv pip install "agent-evals @ https://github.com/<owner>/agent-evals/archive/<commit>.tar.gz"
+uv pip install "agent-evals @ https://github.com/rishikeshyadav-lg/agent-evals/archive/<commit>.tar.gz"
 ```
 
 This repository holds only `agent-evals`. It was extracted from the `penguiflow` monorepo, which keeps the
