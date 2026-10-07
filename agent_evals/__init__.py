@@ -32,7 +32,15 @@ from .core.evaluation import (
     VariantCaseResult,
 )
 from .core.evidence import EvidenceContext, EvidenceEvent, EvidenceSink, redact_attributes
-from .core.prediction import PredictionResult, PredictionStatus, ScoreResult, ScoreValue, normalize_scores, scorer_name
+from .core.prediction import (
+    MultiScoreResult,
+    PredictionResult,
+    PredictionStatus,
+    ScoreResult,
+    ScoreValue,
+    normalize_scores,
+    scorer_name,
+)
 from .core.splits import assert_disjoint, split_by_group
 from .core.steps import GenericStep, GenericTrajectory
 from .reporting.diffing import (
@@ -313,6 +321,7 @@ __all__ = [
     "RunRow",
     "RunSettings",
     "RunView",
+    "MultiScoreResult",
     "ScoreResult",
     "ScoreValue",
     "Scorecard",

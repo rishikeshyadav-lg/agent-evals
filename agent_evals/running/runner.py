@@ -36,11 +36,15 @@ def _as_list(scorers: Scorers) -> list[Metric]:
 
 async def _score(
     case: EvaluationCase, output: Any, scorers: Sequence[Metric]
-) -> tuple[dict[str, float], dict[str, Any]]:
-    """Run every scorer on one output and merge what they say; a name used twice is an error."""
+) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
+    """Run every scorer on one output and merge what they say; a name used twice is an error.
+
+    A scorer's details are keyed by the metrics it scored, so the duplicate-metric check below also
+    keeps two scorers from overwriting each other's details.
+    """
 
     merged: dict[str, float] = {}
-    details: dict[str, Any] = {}
+    details: dict[str, dict[str, Any]] = {}
     for scorer in scorers:
         value = await _await_value(scorer(case, output))
         metrics, scorer_details = normalize_scores(value, scorer=scorer_name(scorer))

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from ..core.datasets import DatasetManifest
 from ..core.evaluation import EvaluationDataset, EvaluationVariant, RunOne
@@ -31,6 +32,11 @@ class SuiteRule:
     required_pass_rate: float = 1.0
     confidence: float = 0.95
     resamples: int = 10_000
+    # Some scorers cannot score every case: one that checks an answer against a table reports nothing
+    # when the table has no row to check against. Scoring that 0 would blame the agent for missing
+    # ground truth, so a suite may exclude those cases instead. "fail" stays the default, because a
+    # metric silently absent is usually a mistake rather than a decision.
+    unmeasured_cases: Literal["fail", "exclude"] = "fail"
 
     def __post_init__(self) -> None:
         if not self.metric.strip():
@@ -53,10 +59,19 @@ class SuiteVerdict:
     failing_case_ids: Sequence[str]
     interval: BootstrapInterval | None
     rule: str
+    # Cases nothing could score, left out of case_count and mean_score. Named rather than counted,
+    # so a reader can tell which questions went unchecked instead of trusting a shrunken denominator.
+    unmeasured_case_ids: Sequence[str] = ()
 
 
-def case_scores(run: RepeatedRun, variant_id: str, metric: str) -> dict[str, float]:
-    """Each case's mean score over its repeats, with a failed repeat counted as 0."""
+def case_scores(
+    run: RepeatedRun, variant_id: str, metric: str, *, unmeasured: Literal["fail", "exclude"] = "fail"
+) -> dict[str, float]:
+    """Each case's mean score over its repeats, with a failed repeat counted as 0.
+
+    A repeat the scorer could not measure is an error by default. With `unmeasured="exclude"` it is
+    left out instead, and a case whose every repeat was unmeasured does not appear in the result.
+    """
 
     scores: dict[str, list[float]] = {}
     for row in run.rows_for(variant_id):
@@ -64,6 +79,8 @@ def case_scores(run: RepeatedRun, variant_id: str, metric: str) -> dict[str, flo
             value = 0.0
         elif metric in row.result.metrics:
             value = row.result.metrics[metric]
+        elif unmeasured == "exclude":
+            continue
         else:
             raise ValueError(f"the run of {row.key} did not produce metric {metric!r}")
         scores.setdefault(row.case_id, []).append(value)
@@ -73,9 +90,11 @@ def case_scores(run: RepeatedRun, variant_id: str, metric: str) -> dict[str, flo
 def suite_verdict(run: RepeatedRun, variant_id: str, manifest: DatasetManifest, rule: SuiteRule) -> SuiteVerdict:
     """Judge one variant's run by the rule its dataset's suite type calls for."""
 
-    scores = case_scores(run, variant_id, rule.metric)
+    scores = case_scores(run, variant_id, rule.metric, unmeasured=rule.unmeasured_cases)
     if not scores:
         raise ValueError(f"the run has no rows for variant {variant_id!r}")
+    measured = {row.case_id for row in run.rows_for(variant_id)}
+    excluded = tuple(sorted(measured - set(scores)))
     mean_score = sum(scores.values()) / len(scores)
     if manifest.suite == "regression":
         failing = tuple(case_id for case_id, score in scores.items() if score < rule.case_pass_score)
@@ -89,6 +108,7 @@ def suite_verdict(run: RepeatedRun, variant_id: str, manifest: DatasetManifest, 
             pass_rate=pass_rate,
             failing_case_ids=failing,
             interval=None,
+            unmeasured_case_ids=excluded,
             rule=(
                 f"regression: a case passes at a mean {rule.metric} of at least {rule.case_pass_score:g}; "
                 f"{rule.required_pass_rate:.0%} of cases must pass"
@@ -108,6 +128,7 @@ def suite_verdict(run: RepeatedRun, variant_id: str, manifest: DatasetManifest, 
         pass_rate=None,
         failing_case_ids=(),
         interval=interval,
+        unmeasured_case_ids=excluded,
         rule=(
             f"capability: partial credit; mean {rule.metric} with a {rule.confidence:.0%} case-clustered "
             "interval; no pass or fail"

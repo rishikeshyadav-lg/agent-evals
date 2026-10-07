@@ -79,7 +79,33 @@ class ScoreResult:
         object.__setattr__(self, "checks", dict(self.checks))
 
 
-ScoreValue = float | int | bool | Mapping[str, float] | ScoreResult
+@dataclass(frozen=True, slots=True)
+class MultiScoreResult:
+    """Several named scores from one scorer, each able to explain itself.
+
+    A scorer that returns a plain mapping reports its numbers and nothing else, which is fine until
+    one of them is a disagreement worth describing: a figure checked against a table needs to say
+    which field was wrong and by how much, not only that something was. The details are keyed by the
+    metric they belong to, so they land in `VariantCaseResult.score_details` the same way a single
+    `ScoreResult`'s do.
+    """
+
+    scores: Mapping[str, float]
+    details: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        scores = {str(name): float(number) for name, number in self.scores.items()}
+        if not all(math.isfinite(number) for number in scores.values()):
+            raise ValueError("every score must be finite")
+        unknown = sorted(set(self.details) - set(scores))
+        if unknown:
+            # Detail for a metric nobody scored would be dropped silently on the way to the report.
+            raise ValueError(f"details name metrics this scorer did not score: {unknown}")
+        object.__setattr__(self, "scores", scores)
+        object.__setattr__(self, "details", {name: dict(detail) for name, detail in self.details.items()})
+
+
+ScoreValue = float | int | bool | Mapping[str, float] | ScoreResult | MultiScoreResult
 
 
 def scorer_name(scorer: Callable[..., Any]) -> str | None:
@@ -94,10 +120,13 @@ def scorer_name(scorer: Callable[..., Any]) -> str | None:
 def normalize_scores(value: ScoreValue, *, scorer: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
     """Read what a scorer returned as `(metrics, details)`.
 
-    A mapping names its own metrics. A single number, a bool (1.0 or 0.0) or a `ScoreResult` is
-    reported under the scorer's own name, so such a scorer must have one.
+    A mapping names its own metrics, and a `MultiScoreResult` does the same while carrying a detail
+    per metric. A single number, a bool (1.0 or 0.0) or a `ScoreResult` is reported under the scorer's
+    own name, so such a scorer must have one.
     """
 
+    if isinstance(value, MultiScoreResult):
+        return dict(value.scores), {name: dict(detail) for name, detail in value.details.items()}
     if isinstance(value, Mapping):
         return {str(name): float(number) for name, number in value.items()}, {}
     if isinstance(value, ScoreResult):
@@ -110,7 +139,10 @@ def normalize_scores(value: ScoreValue, *, scorer: str | None) -> tuple[dict[str
         return {name: value.score}, ({name: details} if details else {})
     if isinstance(value, (bool, int, float)):
         return {_required_name(scorer): float(value)}, {}
-    raise ValueError(f"a scorer must return a mapping, a number or a ScoreResult, not {type(value).__name__}")
+    raise ValueError(
+        f"a scorer must return a mapping, a number, a ScoreResult or a MultiScoreResult, "
+        f"not {type(value).__name__}"
+    )
 
 
 def _required_name(scorer: str | None) -> str:
