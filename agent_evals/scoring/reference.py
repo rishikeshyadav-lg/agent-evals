@@ -28,7 +28,7 @@ from typing import Any
 from ..core.evaluation import EvaluationCase
 from ..core.prediction import MultiScoreResult, Unmeasured
 from ..sql.executor import SqlExecutor
-from .claims import DEFAULT_WINDOW, StatedNumber, number_near
+from .claims import DEFAULT_WINDOW, StatedNumber, numbers_by_label
 from .outcome import Tolerance, answer_of
 
 CASE_KEY = "reference"
@@ -118,7 +118,12 @@ class SqlReference:
                 {f"{self.name}.measured": {"unmeasured": truth.reason}},
             )
         row, fields, required = truth
-        verdicts = {name: self._verdict(name, row[name], label, output) for name, label in fields.items()}
+        # Resolved together, so a field cannot take the figure sitting next to another field's name.
+        stated_numbers = numbers_by_label(str(answer_of(output)), list(fields.values()), window=self.window)
+        verdicts = {
+            name: self._verdict(name, row[name], stated_numbers.get(label), output)
+            for name, label in fields.items()
+        }
 
         stated = {name: verdict for name, verdict in verdicts.items() if verdict.matched is not None}
         missing = sorted(name for name in required if verdicts[name].matched is None)
@@ -173,11 +178,10 @@ class SqlReference:
         required = [name for name in (declared.get("required") or fields) if name in fields]
         return {name: _as_number(row[name]) for name in fields}, fields, required
 
-    def _verdict(self, field_name: str, expected: float, label: str, output: Any) -> FieldVerdict:
+    def _verdict(self, field_name: str, expected: float, stated: StatedNumber | None, output: Any) -> FieldVerdict:
         structured = _as_number(self.figures_of(output).get(field_name))
         if structured is not None:
             return self._compare(field_name, expected, structured, abbreviated=False, note=None)
-        stated = number_near(str(answer_of(output)), label, window=self.window)
         if stated is None:
             return FieldVerdict(expected=expected, claimed=None, matched=None)
         claimed, note = self._read(field_name, stated)

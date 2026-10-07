@@ -15,6 +15,7 @@ to have your agent return its figures as data alongside the prose.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 # The magnitude's word boundary sits inside the alternation rather than after the whole number: as a
@@ -102,6 +103,46 @@ def number_near(text: str, label: str, *, window: int = DEFAULT_WINDOW) -> State
         if found:
             return min(found, key=lambda pair: start - pair[0])[1]
     return None
+
+
+def numbers_by_label(text: str, labels: Sequence[str], *, window: int = DEFAULT_WINDOW) -> dict[str, StatedNumber]:
+    """Each label's figure, resolved together so no field takes another's number.
+
+    Asking for one label at a time cannot work: English puts the figure on either side of the word
+    ("400 clicks", "clicks were 400"), so whichever side you prefer, the other reading steals a
+    neighbour's number. In "400 clicks, a ctr of 0.42%" a rule preferring what follows "clicks"
+    returns 0.42.
+
+    Resolving them together removes the guess. Every number goes to the label it sits closest to,
+    and each label then takes the nearest number that chose it. A label with no number of its own is
+    absent from the result, which is how a caller tells "not stated" from "stated wrongly".
+    """
+
+    mentions = [(label, start) for label in labels for start in _mentions(text, label)]
+    if not mentions:
+        return {}
+    claimed: dict[str, tuple[int, StatedNumber]] = {}
+    for match in _NUMBER.finditer(text):
+        if not match.group("number"):
+            continue
+        at = match.start()
+        label, distance = min(
+            ((label, _distance(at, start, len(label))) for label, start in mentions),
+            key=lambda pair: pair[1],
+        )
+        if distance > window:
+            continue
+        if label not in claimed or distance < claimed[label][0]:
+            claimed[label] = (distance, _stated(match))
+    return {label: stated for label, (_, stated) in claimed.items()}
+
+
+def _distance(number_at: int, label_at: int, label_length: int) -> int:
+    """How far a number sits from a label, counting zero when it touches either end of it."""
+
+    if number_at < label_at:
+        return label_at - number_at
+    return max(0, number_at - (label_at + label_length))
 
 
 def _mentions(text: str, label: str) -> list[int]:

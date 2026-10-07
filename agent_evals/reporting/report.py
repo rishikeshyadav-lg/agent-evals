@@ -194,11 +194,16 @@ def build_scorecard(
 
     success_scores = case_scores(run, variant_id, metrics.success, unmeasured=unmeasured)
     lower, upper = _interval(success_scores, resamples, seed)
+    # Counted by what actually reached the score, not by what merely ran: a row nothing could score
+    # is excluded from the mean, and reporting it as used would overstate how much was checked.
+    scored = [row for row in rows if row.case_id in success_scores]
+    left_out = len(rows) - len(scored)
     entries = [
         ScorecardEntry(
             "success_rate", "Task success rate", "outcome", "rate", True,
             sum(success_scores.values()) / len(success_scores), lower, upper,
-            sum(1 for row in rows if row.result.error is None), sum(1 for row in rows if row.result.error is not None),
+            len(scored), left_out,
+            None if not left_out else f"{left_out} run(s) produced no {metrics.success!r} and were left out",
         ),
         _metric_entry(
             run, variant_id, "tool_selection", "Tool selection accuracy", "trajectory", metrics.tool_selection,

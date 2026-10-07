@@ -80,7 +80,7 @@ from .running.shadow import (
 )
 from .running.suites import SuiteRule, SuiteVerdict, case_scores, run_suite, suite_verdict
 from .scoring.answer import SUGGESTED_CRITERIA, AnswerRubric, suggested_rubric
-from .scoring.claims import StatedNumber, number_near, numbers_in_text
+from .scoring.claims import StatedNumber, number_near, numbers_by_label, numbers_in_text
 from .scoring.golden import (
     GoldenApproval,
     GoldenRefreshError,
@@ -336,6 +336,7 @@ __all__ = [
     "open_executor",
     "StatedNumber",
     "number_near",
+    "numbers_by_label",
     "numbers_in_text",
     "SqlReference",
     "FieldVerdict",
