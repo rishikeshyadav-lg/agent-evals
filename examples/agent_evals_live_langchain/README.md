@@ -12,4 +12,4 @@ It makes about six short agent runs (a few thousand model tokens on the default 
 scorecard. The runner reports token counts, not dollars, so cost per task shows as "not measured".
 
 The same file works offline: `main(model=...)` takes any LangChain chat model that supports tool calling. The test
-`tests/agent_evals/test_live_langchain_example.py` runs it with a scripted model, so it needs no credentials.
+`tests/contract/test_live_langchain_example.py` runs it with a scripted model, so it needs no credentials.

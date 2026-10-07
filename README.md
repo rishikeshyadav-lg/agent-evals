@@ -1,8 +1,11 @@
 # agent-evals
 
-Measure four things about an AI agent: whether the answer is right, whether it took sensible steps to
-get there, what it cost in time and money, and whether it broke any rules. Give it a fixed set of
-questions; it runs each several times, scores all four, and reports a range around every number.
+A Python library for testing AI agents: hand it your agent and a list of questions, and it tells you how
+the agent did.
+
+It measures four things — whether the answer is right, whether the steps made sense, what it cost in time
+and money, and whether any rule was broken — running each question several times and reporting a range
+around every number.
 
 Works with any agent in any framework — you hand it a function. No required dependencies.
 
@@ -10,16 +13,20 @@ Works with any agent in any framework — you hand it a function. No required de
 
 - **Agents aren't repeatable.** The same question twice gives different wording, tools, cost, sometimes
   a different answer. One run tells you little, so this repeats each question and reports the spread.
-- **Right isn't enough.** An agent can be correct while wasting twenty steps, calling a tool it
-  shouldn't, or costing a dollar a question. One accuracy number hides all of that.
+- **Right isn't enough.** An agent can be correct and still take twenty steps to get there, or call a
+  tool it should never have touched.
+- **Cost and speed are findings, not footnotes.** Latency percentiles and cost per question each come
+  with a range, so an expensive or slow pattern surfaces as something to go and fix rather than as a
+  number at the bottom of a report. Most of what you can actually improve shows up here.
 
 ## Install
 
 ```bash
-uv pip install "agent-evals @ https://github.com/rishikeshyadav-lg/agent-evals/archive/<commit>.tar.gz"
+pip install agent-evals
 ```
 
-Pin a commit. Not on PyPI.
+Pin a version — `agent-evals==0.1.0` — if you are comparing scores over time. The library changing under
+you between runs would change the numbers along with it.
 
 ## First eval
 
@@ -105,10 +112,13 @@ Two things to know when reading the scorecard:
 - **Answer** — exact, contains, regex, numeric tolerance, rubric partial credit, pass@k.
 - **Steps** — which tools, in what order, with what arguments; rules like "never call this" or "at most five".
 - **Speed and cost** — latency percentiles and cost per question with ranges, step counts, loop detection.
-- **Rules** — policy checks that fail a run outright.
+- **Rules** — policy checks that fail a run outright. They detect a forbidden call after the fact and
+  cannot prevent it, so enforce anything destructive inside your agent.
 
 Also: reproducible datasets with a checksum, golden trajectories, comparing two versions with proper
 statistics, threshold calibration, and an optional MLflow log (`pip install "agent-evals[mlflow]"`).
+Two scorers are experimental — plan adherence and multi-step coherence ask a model to judge the agent's
+reasoning, and nobody has measured how often it agrees with a human. Reports using them say so.
 
 ## Verify the claims
 
@@ -124,33 +134,47 @@ ok: 3 agent shapes (plain function, coroutine function, callable object) scored 
 No framework, model client or backend is pulled in, and the same agent written three ways scores
 identically. Exits non-zero on failure, so it runs in CI.
 
-## What this is not
+## Repo layout
 
-- **Not an agent framework.** It evaluates agents; it doesn't build them.
-- **Not a sandbox.** Policy checks detect a forbidden call after the fact, they cannot stop it. Enforce
-  destructive actions inside your agent.
-- **Not a tracing system.** It reads what your runner hands it.
+```
+agent_evals/      the package: five folders, plus __init__.py, selfcheck.py and py.typed
+tests/            408 tests, mirroring the package folders, plus contract/
+examples/         two runnable examples
+pyproject.toml    zero dependencies; mlflow is the one optional extra
+CHANGELOG.md      version history and known limits
+```
 
-Plan adherence and multi-step coherence are **experimental** — a model judges the agent's reasoning, and
-nobody has measured how often it agrees with a human. Reports using them say so.
+No `src/` layout, no `docs/`, no CI config. Everything is re-exported, so
+`from agent_evals import ExactMatch` works regardless of which folder a name lives in — you never import
+these paths directly.
 
-## Layout
+### The package, 26 modules
 
-Everything is re-exported, so `from agent_evals import ExactMatch` works regardless of where it lives.
+| Folder | Modules | Notes |
+|---|---|---|
+| `core/` | `evaluation`, `datasets`, `prediction`, `steps`, `evidence`, `splits` | The shapes everything else speaks in. Cases, datasets and variants live in **`evaluation`**, not `datasets`. |
+| `running/` | `runner`, `execution`, `suites`, `comparison`, `shadow` | Repeats, concurrency, the two suite kinds, comparing variants, shadow runs against recorded inputs. |
+| `scoring/` | `outcome`, `trajectory`, `operational`, `policy`, `golden`, `judging`, `llm_judge` | One module per layer, in the order above: answer, steps, speed and cost, rules. `llm_judge` holds the two experimental scorers. |
+| `stats/` | `statistics`, `calibration`, `repeatability`, `thresholds`, `profiles` | Paired bootstrap intervals, run-to-run noise, pass@k, and the bars a promotion gate uses. |
+| `reporting/` | `report`, `diffing`, `mlflow_backend` | The scorecard, run-to-run diffs, and the only module with an optional dependency. |
 
-| Folder | Holds |
+### Tests
+
+`pip install -e ".[dev]"` then `pytest`. 408 tests: **391 pass, 18 skip.**
+
+| Folder | Covers |
 |---|---|
-| `core/` | Cases, datasets, what a run returned, the steps it took |
-| `running/` | Repeats, concurrency, suites, comparing variants |
-| `scoring/` | One module per layer: answer, steps, speed and cost, rules |
-| `stats/` | Intervals, repeatability, thresholds |
-| `reporting/` | The scorecard, run diffs, optional MLflow |
+| `core/`, `running/`, `scoring/`, `stats/`, `reporting/` | The matching package folder |
+| `contract/` | What the package promises as a whole: agent shapes, the self-check, and that both examples still run |
 
-Tests mirror those, plus `contract/` for what the package promises.
+The 18 skips need something this repository deliberately does not depend on, and each says so as it
+skips: LangChain for the live example, the `penguiflow` monorepo for the cross-package parity checks,
+and `mlflow` for one reporting test.
 
-- `examples/agent_evals_quickstart/` — runnable, offline.
-- `examples/agent_evals_live_langchain/` — a real LangChain agent on a live endpoint.
-- `tests/` — 408 tests via `pip install -e ".[dev]"` then `pytest`. 391 pass, 18 skip (they need
-  LangChain or the monorepo) and each says so.
+### Examples
+
+- `examples/agent_evals_quickstart/` — a plain function with two tools, offline, no credentials.
+- `examples/agent_evals_live_langchain/` — a real LangChain agent on a live model endpoint. Needs
+  credentials and network; its test drives it offline with a scripted model instead.
 
 Version `0.1.0`, extracted from the `penguiflow` monorepo, which keeps the full history.

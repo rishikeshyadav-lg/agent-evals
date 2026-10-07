@@ -16,6 +16,6 @@ What to change for your own agent:
    `GenericTrajectory` of the tool calls if you have them).
 2. Build an `EvaluationDataset` of `EvaluationCase`s and freeze it with `DatasetManifest.from_dataset`.
 3. Pick scorers. `ExactMatch`, `ToolSelection`, `ArgumentCorrectness`, `PolicyVeto` are used here; the rest are
-   in `docs/evaluation-framework.md`.
+   listed under "What it scores" in the repository README.
 
-Test: `tests/agent_evals/test_quickstart_example.py` runs this file and checks the report.
+Test: `tests/contract/test_quickstart_example.py` runs this file and checks the report.

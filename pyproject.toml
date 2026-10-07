@@ -9,10 +9,23 @@ description = "Agent-agnostic evaluation: run any agent over a fixed dataset, sc
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-    {name = "PenguiFlow Team"},
+    {name = "Rishikesh Yadav"},
 ]
 dependencies = []
+keywords = ["agent", "evaluation", "evals", "llm", "testing", "scorecard"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 
 [project.optional-dependencies]
 mlflow = ["mlflow>=2.10"]
@@ -24,16 +37,27 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rishikeshyadav-lg/penguiflow"
+Homepage = "https://github.com/rishikeshyadav-lg/agent-evals"
+Repository = "https://github.com/rishikeshyadav-lg/agent-evals"
+Issues = "https://github.com/rishikeshyadav-lg/agent-evals/issues"
+Changelog = "https://github.com/rishikeshyadav-lg/agent-evals/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = { find = { include = ["agent_evals*"] } }
 package-data = { agent_evals = ["py.typed"] }
-license-files = ["LICENSE"]
 
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+# B008 flags a call in a default argument, which catches shared mutable defaults. Every one here is a
+# frozen dataclass (RunSettings(), ScorecardMetrics()), so sharing one instance is safe and intended.
+ignore = ["UP042", "B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent_evals"]
 
 [tool.mypy]
 python_version = "3.11"

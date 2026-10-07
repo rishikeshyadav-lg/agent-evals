@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 — 2026-10-07
 
 First version extracted from the `penguiflow` monorepo, where it lives at `packages/agent-evals`.
 That repository keeps the full history; this one starts fresh.
