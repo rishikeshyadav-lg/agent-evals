@@ -105,6 +105,23 @@ class MultiScoreResult:
         object.__setattr__(self, "details", {name: dict(detail) for name, detail in self.details.items()})
 
 
+@dataclass(frozen=True, slots=True)
+class Unmeasured:
+    """Ground truth was out of reach, so this scorer has no verdict about the agent.
+
+    Distinct from a score of zero, which says the agent was wrong, and from None, which says the
+    question had nothing of this kind to judge. A scorer that cannot reach its reference must say so
+    rather than return a number, because a number here is indistinguishable from a real result and
+    will be averaged into a report as though somebody had checked.
+    """
+
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip():
+            raise ValueError("an unmeasured result must say why it could not be measured")
+
+
 ScoreValue = float | int | bool | Mapping[str, float] | ScoreResult | MultiScoreResult
 
 
@@ -155,6 +172,7 @@ __all__ = [
     "PredictionResult",
     "PredictionStatus",
     "ScoreResult",
+    "Unmeasured",
     "ScoreValue",
     "normalize_scores",
     "scorer_name",

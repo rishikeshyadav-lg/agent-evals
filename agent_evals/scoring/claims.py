@@ -86,23 +86,47 @@ def number_near(text: str, label: str, *, window: int = DEFAULT_WINDOW) -> State
 
     if not label.strip():
         raise ValueError("label must be non-empty")
-    lowered, needle = text.casefold(), label.casefold()
-    for start in _mentions(lowered, needle):
-        around = text[max(0, start - window) : start + len(label) + window]
-        offset = max(0, start - window)
-        here = [
-            (abs(match.start() + offset - start), _stated(match))
-            for match in _NUMBER.finditer(around)
-            if match.group("number")
+    for start in _mentions(text, label):
+        offset, end = _whole_numbers(text, max(0, start - window), min(len(text), start + len(label) + window))
+        around = text[offset:end]
+        after = start + len(label)
+        found = [
+            (match.start() + offset, _stated(match)) for match in _NUMBER.finditer(around) if match.group("number")
         ]
-        if here:
-            return min(here, key=lambda pair: pair[0])[1]
+        # Prefer a figure stated after the label ("spend was $18,450"), because the nearest number
+        # overall is often the previous field's: in "clicks were 900, spend was 400" the 900 sits
+        # closer to "spend" than its own figure does. Fall back to one before for "$18,450 of spend".
+        following = [pair for pair in found if pair[0] >= after]
+        if following:
+            return min(following, key=lambda pair: pair[0] - after)[1]
+        if found:
+            return min(found, key=lambda pair: start - pair[0])[1]
     return None
 
 
-def _mentions(lowered: str, needle: str) -> list[int]:
-    found, start = [], lowered.find(needle)
-    while start != -1:
-        found.append(start)
-        start = lowered.find(needle, start + 1)
-    return found
+def _mentions(text: str, label: str) -> list[int]:
+    """Where `label` appears as a word of its own.
+
+    Matched on word boundaries, so asking for "clicks" does not find "unique clicks" and report its
+    figure instead. A wrong figure read confidently is worse than no figure at all.
+    """
+
+    pattern = re.compile(rf"(?<!\w){re.escape(label)}(?!\w)", re.IGNORECASE)
+    return [match.start() for match in pattern.finditer(text)]
+
+
+_NUMERIC = "0123456789,."
+
+
+def _whole_numbers(text: str, start: int, end: int) -> tuple[int, int]:
+    """Widen a slice until neither edge sits inside a number.
+
+    Cutting "18,450" in the middle leaves the parser a fragment it reads as a perfectly good figure:
+    the window used to turn 18,450 into 1845 with nothing to show anything had gone wrong.
+    """
+
+    while start > 0 and text[start - 1] in _NUMERIC and text[start] in _NUMERIC:
+        start -= 1
+    while end < len(text) and text[end] in _NUMERIC and text[end - 1] in _NUMERIC:
+        end += 1
+    return start, end

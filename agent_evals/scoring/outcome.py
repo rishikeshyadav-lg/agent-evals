@@ -103,6 +103,13 @@ class Tolerance:
         ):
             if not math.isfinite(number) or number < 0:
                 raise ValueError(f"tolerance {field_name} must be finite and non-negative")
+        if self.abbreviated_multiplier < 1:
+            # Below 1 it narrows, which is the opposite of what the name and docstring promise, and
+            # a tolerance that quietly tightened would fail answers for no stated reason.
+            raise ValueError("abbreviated_multiplier must be at least 1, since it widens a tolerance")
+        if self.kind == "absolute" and self.abbreviated_multiplier != 1.0:
+            # Only the relative branch uses it; accepting it here would look configured and do nothing.
+            raise ValueError("an absolute tolerance has no abbreviated_multiplier to apply")
 
     def matches(self, claimed: float, expected: float, *, abbreviated: bool = False) -> bool:
         """Whether a claimed number is within this tolerance of the expected one."""
@@ -211,7 +218,9 @@ def score_rubric(
     applicable = [name for name in rubric.weights if name in applicable_scores]
     applicable_weight = sum(rubric.weights[name] for name in applicable)
     if applicable_weight == 0:
-        score, effective = 0.0, {}
+        # Scoring this 0.0 would say the answer failed every criterion, when in truth no criterion
+        # had anything to judge. The caller has to decide what that means; it is not a bad answer.
+        raise ValueError("no criterion applied to this answer, so there is nothing to score")
     else:
         score = sum(rubric.weights[name] * applicable_scores[name] for name in applicable) / applicable_weight
         effective = {name: rubric.weights[name] / applicable_weight for name in applicable}

@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from ..core.datasets import DatasetManifest
 from ..running.execution import RepeatedRun
@@ -179,6 +179,7 @@ def build_scorecard(
     seed: int = 0,
     include_error_messages: bool = False,
     judge_agreement: AgreementReport | None = None,
+    unmeasured: Literal["fail", "exclude"] = "fail",
 ) -> Scorecard:
     """Build the eight-entry scorecard for one variant of a run.
 
@@ -191,7 +192,7 @@ def build_scorecard(
         raise ValueError(f"the run has no rows for variant {variant_id!r}")
     summary = summary or operational_summary(run, variant_id, resamples=resamples, seed=seed)
 
-    success_scores = case_scores(run, variant_id, metrics.success)
+    success_scores = case_scores(run, variant_id, metrics.success, unmeasured=unmeasured)
     lower, upper = _interval(success_scores, resamples, seed)
     entries = [
         ScorecardEntry(
@@ -320,12 +321,15 @@ def build_report(
     """Assemble a report: the suite's verdict, the scorecard, and the operational summary."""
 
     summary = operational_summary(run, variant_id, resamples=resamples, seed=seed)
+    suite_rule = rule or SuiteRule(metrics.success, resamples=resamples)
     return Report(
         record=record,
-        suite=suite_verdict(run, variant_id, manifest, rule or SuiteRule(metrics.success, resamples=resamples)),
+        suite=suite_verdict(run, variant_id, manifest, suite_rule),
         scorecard=build_scorecard(
             run, variant_id, metrics=metrics, summary=summary, resamples=resamples, seed=seed,
             include_error_messages=include_error_messages, judge_agreement=judge_agreement,
+            # Without this the suite degrades gracefully and the report then crashes on the same row.
+            unmeasured=suite_rule.unmeasured_cases,
         ),
         operational=summary,
         profiles=tuple(profiles),

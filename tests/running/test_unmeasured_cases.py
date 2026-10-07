@@ -74,6 +74,56 @@ async def test_the_verdict_names_what_it_left_out() -> None:
     assert verdict.failing_case_ids == ("c2",)
 
 
+async def test_a_rubric_whose_criterion_cannot_reach_the_truth_excludes_the_case() -> None:
+    """The test this file should have been. Faking unmeasurability with a hand-written scorer is why
+    the rubric was able to report a confident 1.0 for an answer nobody had checked."""
+
+    from agent_evals import Unmeasured, WeightedRubric
+    from agent_evals.scoring.answer import AnswerRubric
+
+    def no_ground_truth(case: EvaluationCase, output: PredictionResult):
+        return Unmeasured("the query returned no rows") if case.case_id == "c1" else 1.0
+
+    def judged(case: EvaluationCase, output: PredictionResult) -> float:
+        return 1.0
+
+    accuracy = AnswerRubric(
+        criteria={"figures": no_ground_truth, "completeness": judged},
+        rubric=WeightedRubric(weights={"figures": 0.5, "completeness": 0.5}),
+    )
+    cases = [EvaluationCase("c1", {}), EvaluationCase("c2", {})]
+    run = await run_repeated(
+        cases, [EvaluationVariant("v")], lambda case, variant: PredictionResult(answer="x"),
+        accuracy, RunSettings(repeats=1),
+    )  # fmt: skip
+    manifest = DatasetManifest.from_dataset(EvaluationDataset("d", "1", cases), suite="regression")
+
+    with pytest.raises(ValueError, match="did not produce metric 'accuracy'"):
+        case_scores(run, "v", "accuracy")
+
+    verdict = suite_verdict(run, "v", manifest, SuiteRule("accuracy", unmeasured_cases="exclude"))
+    assert verdict.unmeasured_case_ids == ("c1",)
+    assert verdict.case_count == 1
+
+
+async def test_a_run_where_nothing_could_be_scored_says_so_plainly() -> None:
+    """"No rows" would send a reader hunting a runner problem that is not there."""
+
+    cases = [EvaluationCase("c1", {})]
+
+    def scorer(case: EvaluationCase, output: PredictionResult) -> dict[str, float]:
+        return {"other": 1.0}
+
+    run = await run_repeated(
+        cases, [EvaluationVariant("v")], lambda case, variant: PredictionResult(answer="x"),
+        scorer, RunSettings(repeats=1),
+    )  # fmt: skip
+    manifest = DatasetManifest.from_dataset(EvaluationDataset("d", "1", cases), suite="regression")
+
+    with pytest.raises(ValueError, match="every one was unmeasured"):
+        suite_verdict(run, "v", manifest, SuiteRule("quality", unmeasured_cases="exclude"))
+
+
 async def test_a_run_where_everything_was_measured_excludes_nothing() -> None:
     dataset, run = await _run()
     manifest = DatasetManifest.from_dataset(dataset, suite="capability")

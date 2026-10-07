@@ -200,10 +200,13 @@ def test_a_failure_code_fails_an_answer_however_well_it_scored() -> None:
     assert result.failure_codes == ("invented_evidence",)
 
 
-def test_a_rubric_with_no_applicable_criterion_scores_zero() -> None:
+def test_a_rubric_with_no_applicable_criterion_refuses_to_score() -> None:
+    """A zero here would read as "failed everything" when nothing was judged at all."""
+
     rubric = WeightedRubric({"a": 1.0})
 
-    assert score_rubric(rubric, {"a": None}).score == 0.0
+    with pytest.raises(ValueError, match="nothing to score"):
+        score_rubric(rubric, {"a": None})
 
 
 def test_scores_that_do_not_match_the_rubrics_criteria_are_refused() -> None:
@@ -366,3 +369,17 @@ async def test_repeatability_of_a_metric_the_run_did_not_produce_is_an_error() -
         repeatability(run, "v", "other", k=1)
     with pytest.raises(ValueError, match="no rows for variant 'ghost'"):
         repeatability(run, "ghost", "correct", k=1)
+
+
+def test_a_tolerance_that_would_narrow_on_shorthand_is_refused() -> None:
+    """Below 1 it tightens, which is the opposite of what the field is for."""
+
+    with pytest.raises(ValueError, match="at least 1"):
+        Tolerance("relative", 0.01, abbreviated_multiplier=0.5)
+
+
+def test_an_absolute_tolerance_refuses_an_abbreviated_multiplier() -> None:
+    """Only the relative branch applies it, so accepting it would look configured and do nothing."""
+
+    with pytest.raises(ValueError, match="no abbreviated_multiplier"):
+        Tolerance("absolute", 50.0, abbreviated_multiplier=3.0)

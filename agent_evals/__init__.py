@@ -38,6 +38,7 @@ from .core.prediction import (
     PredictionStatus,
     ScoreResult,
     ScoreValue,
+    Unmeasured,
     normalize_scores,
     scorer_name,
 )
@@ -336,6 +337,7 @@ __all__ = [
     "number_near",
     "numbers_in_text",
     "ScoreResult",
+    "Unmeasured",
     "ScoreValue",
     "Scorecard",
     "ScorecardEntry",

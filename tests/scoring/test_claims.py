@@ -78,3 +78,28 @@ def test_an_empty_label_is_refused() -> None:
 
     with pytest.raises(ValueError, match="non-empty"):
         number_near(ANSWER, "   ")
+
+
+def test_a_label_inside_a_longer_word_is_not_matched() -> None:
+    """Asking for "spend" must not read "spending"'s figure; a confident wrong number is the worst
+    outcome for a tool whose job is checking figures."""
+
+    assert number_near("spending was 900, spend was 400", "spend").value == pytest.approx(400.0)
+
+
+def test_the_window_never_cuts_a_number_in_half() -> None:
+    """A slice through "18,450" used to leave a fragment the parser read as a sound figure: 1845."""
+
+    far = "spend" + " " * 55 + "18,450"
+
+    assert number_near(far, "spend", window=60).value == pytest.approx(18_450.0)
+
+
+def test_a_figure_after_the_label_wins_over_a_nearer_one_before_it() -> None:
+    """In "clicks were 900, spend was 400" the 900 is closer to "spend" than its own figure is."""
+
+    assert number_near("clicks were 900, spend was 400", "spend").value == pytest.approx(400.0)
+
+
+def test_a_figure_before_the_label_is_still_found_when_none_follows() -> None:
+    assert number_near("$18,450 of spend", "spend").value == pytest.approx(18_450.0)

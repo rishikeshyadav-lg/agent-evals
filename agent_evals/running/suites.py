@@ -91,10 +91,17 @@ def suite_verdict(run: RepeatedRun, variant_id: str, manifest: DatasetManifest, 
     """Judge one variant's run by the rule its dataset's suite type calls for."""
 
     scores = case_scores(run, variant_id, rule.metric, unmeasured=rule.unmeasured_cases)
+    present = {row.case_id for row in run.rows_for(variant_id)}
     if not scores:
+        if present:
+            # Every case ran; none could be scored. Saying "no rows" would send a reader looking for
+            # a runner problem when the truth is that nothing could be measured.
+            raise ValueError(
+                f"no case of this run could be scored on {rule.metric!r}; "
+                f"{len(present)} ran and every one was unmeasured"
+            )
         raise ValueError(f"the run has no rows for variant {variant_id!r}")
-    measured = {row.case_id for row in run.rows_for(variant_id)}
-    excluded = tuple(sorted(measured - set(scores)))
+    excluded = tuple(sorted(present - set(scores)))
     mean_score = sum(scores.values()) / len(scores)
     if manifest.suite == "regression":
         failing = tuple(case_id for case_id, score in scores.items() if score < rule.case_pass_score)

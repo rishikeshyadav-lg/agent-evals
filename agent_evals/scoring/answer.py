@@ -18,12 +18,12 @@ arrived at, as a starting point and not a requirement.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
-from ..core.evaluation import EvaluationCase, Metric, _await_value
-from ..core.prediction import MultiScoreResult, ScoreValue, normalize_scores
+from ..core.evaluation import EvaluationCase, _await_value
+from ..core.prediction import MultiScoreResult, ScoreValue, Unmeasured, normalize_scores
 from .outcome import WeightedRubric, score_rubric
 
 # What one production agent settled on, with the weights it uses. Offered as a starting point: the
@@ -41,20 +41,35 @@ def _no_failure_codes(case: EvaluationCase, output: Any) -> Sequence[str]:
     return ()
 
 
-def _criterion_score(value: ScoreValue | None, *, criterion: str) -> float | None:
-    """One criterion's score, or None when the criterion does not apply to this case.
+CriterionValue = ScoreValue | None | Unmeasured
 
-    A criterion scorer may return None to mean "nothing here to judge" — a question with no figures
-    in it cannot have its figures be wrong. `score_rubric` then drops it from the denominator rather
-    than scoring it zero, so an inapplicable criterion never drags the answer down.
+
+class Criterion(Protocol):
+    """One criterion's scorer.
+
+    Wider than `Metric`, which promises a mapping of scores: a criterion reports one score, or None
+    when it does not apply to this question, or `Unmeasured` when it could not reach the truth it
+    needed. Those three are different answers and the rubric treats them differently.
+    """
+
+    def __call__(self, case: EvaluationCase, output: Any) -> CriterionValue | Awaitable[CriterionValue]: ...
+
+
+def _criterion_outcome(value: ScoreValue | None, *, criterion: str) -> tuple[float | None, Mapping[str, Any] | None]:
+    """One criterion's score and its explanation.
+
+    None means the criterion does not apply — a question with no figures in it cannot have its
+    figures be wrong — and `score_rubric` drops it from the denominator rather than scoring it zero.
+    The detail comes back too: a criterion that cannot say which field disagreed is of little use.
     """
 
     if value is None:
-        return None
-    scores, _ = normalize_scores(value, scorer=criterion)
+        return None, None
+    scores, details = normalize_scores(value, scorer=criterion)
     if len(scores) != 1:
         raise ValueError(f"the scorer for criterion {criterion!r} must report one score, not {sorted(scores)}")
-    return next(iter(scores.values()))
+    name, score = next(iter(scores.items()))
+    return score, details.get(name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +81,7 @@ class AnswerRubric:
     under `name.criterion`, so a report can show the breakdown behind the number.
     """
 
-    criteria: Mapping[str, Metric]
+    criteria: Mapping[str, Criterion]
     rubric: WeightedRubric
     failure_codes_of: Callable[[EvaluationCase, Any], Sequence[str]] = _no_failure_codes
     name: str = "accuracy"
@@ -84,24 +99,49 @@ class AnswerRubric:
     async def __call__(self, case: EvaluationCase, output: Any) -> MultiScoreResult:
         scores: dict[str, float | None] = {}
         details: dict[str, Mapping[str, Any]] = {}
+        unmeasured: dict[str, str] = {}
+        inapplicable: list[str] = []
+
         for criterion, scorer in self.criteria.items():
             value = await _await_value(scorer(case, output))
-            scores[criterion] = _criterion_score(value, criterion=criterion)
-            if scores[criterion] is None:
-                details[f"{self.name}.{criterion}"] = {"applied": False, "why": "the criterion does not apply here"}
+            if isinstance(value, Unmeasured):
+                unmeasured[criterion] = value.reason
+                continue
+            score, detail = _criterion_outcome(value, criterion=criterion)
+            scores[criterion] = score
+            if score is None:
+                inapplicable.append(criterion)
+            elif detail:
+                details[f"{self.name}.{criterion}"] = detail
 
+        reported: dict[str, float] = {
+            f"{self.name}.{criterion}": score for criterion, score in scores.items() if score is not None
+        }
+        # Always reported, so the reason a headline is missing has somewhere to live and so a report
+        # can say how many cases went unchecked.
+        reported[f"{self.name}.measured"] = 0.0 if (unmeasured or not reported) else 1.0
+        details[f"{self.name}.measured"] = {
+            "unmeasured": dict(unmeasured),
+            "did_not_apply": list(inapplicable),
+        }
+
+        if unmeasured or not any(score is not None for score in scores.values()):
+            # The weighted average of whatever happened to work is not accuracy, and reporting it as
+            # accuracy is how an unchecked answer scores full marks. Withholding the headline is what
+            # lets a suite exclude the case instead of believing a number nobody earned.
+            return MultiScoreResult(reported, details)
+
+        for criterion in self.criteria:
+            scores.setdefault(criterion, None)
         result = score_rubric(self.rubric, scores, failure_codes=tuple(self.failure_codes_of(case, output)))
-        reported: dict[str, float] = {self.name: result.score}
-        for criterion, value in scores.items():
-            if value is not None:
-                reported[f"{self.name}.{criterion}"] = value
+        reported[self.name] = result.score
         details[self.name] = {
             "passed": result.passed,
             "applicable": list(result.applicable),
             "effective_weights": dict(result.effective_weights),
             "failure_codes": list(result.failure_codes),
         }
-        return MultiScoreResult(reported, {key: value for key, value in details.items() if key in reported})
+        return MultiScoreResult(reported, details)
 
 
 def suggested_rubric(*, minimum_score: float = 0.85, required_full_score: Sequence[str] = ()) -> WeightedRubric:
