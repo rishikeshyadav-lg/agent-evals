@@ -128,6 +128,26 @@ async def _scores_for(runner: Callable[..., Any]) -> dict[str, float | None]:
     }
 
 
+def check_adapters_stay_lazy() -> list[str]:
+    """Import the database layer in a fresh interpreter and report any adapter it pulled in.
+
+    Each adapter imports its driver at the top of its own module, which is the readable way to write
+    it and is safe only while nothing imports an adapter you did not ask for. This is the check that
+    keeps that true as adapters are added.
+    """
+
+    program = textwrap.dedent(
+        """
+        import sys
+        import agent_evals.sql  # noqa: F401
+        loaded = sorted(name for name in sys.modules if name.startswith("agent_evals.sql."))
+        print(",".join(name for name in loaded if name.rsplit(".", 1)[-1] not in ("executor", "registry")))
+        """
+    )
+    result = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True, check=True)
+    return [name for name in result.stdout.strip().split(",") if name]
+
+
 def check_imports_stay_clean() -> list[str]:
     """Import the package in a fresh interpreter and report any framework it pulled in."""
 
@@ -163,6 +183,12 @@ async def main(argv: Sequence[str] | None = None) -> int:
     else:
         print(f"ok: importing agent_evals loads none of {', '.join(FORBIDDEN_MODULES)}")
 
+    eager = check_adapters_stay_lazy()
+    if eager:
+        print(f"FAILED: importing agent_evals.sql loaded {', '.join(eager)}")
+    else:
+        print("ok: the database layer loads no adapter until one is asked for by name")
+
     scores = await check_every_agent_shape_scores_the_same()
     disagreements = _disagreements(scores)
     for line in disagreements:
@@ -173,7 +199,7 @@ async def main(argv: Sequence[str] | None = None) -> int:
         print("     (timing and spend are measured per run, so they are reported but not compared)")
         for metric, value in sorted(next(iter(scores.values())).items()):
             print(f"     {metric}: {'not measured' if value is None else round(value, 4)}")
-    return 1 if leaked or disagreements else 0
+    return 1 if leaked or eager or disagreements else 0
 
 
 if __name__ == "__main__":

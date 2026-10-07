@@ -78,6 +78,8 @@ from .running.shadow import (
     shadow_compare,
 )
 from .running.suites import SuiteRule, SuiteVerdict, case_scores, run_suite, suite_verdict
+from .scoring.answer import SUGGESTED_CRITERIA, AnswerRubric, suggested_rubric
+from .scoring.claims import StatedNumber, number_near, numbers_in_text
 from .scoring.golden import (
     GoldenApproval,
     GoldenRefreshError,
@@ -177,6 +179,7 @@ from .scoring.trajectory import (
     tool_selection_accuracy,
     trajectory_of,
 )
+from .sql import AdapterNotInstalled, SqlExecutor, adapter_names, open_executor
 from .stats.calibration import (
     OwnerRules,
     PromptBaseline,
@@ -322,6 +325,16 @@ __all__ = [
     "RunSettings",
     "RunView",
     "MultiScoreResult",
+    "AnswerRubric",
+    "SUGGESTED_CRITERIA",
+    "suggested_rubric",
+    "SqlExecutor",
+    "AdapterNotInstalled",
+    "adapter_names",
+    "open_executor",
+    "StatedNumber",
+    "number_near",
+    "numbers_in_text",
     "ScoreResult",
     "ScoreValue",
     "Scorecard",
