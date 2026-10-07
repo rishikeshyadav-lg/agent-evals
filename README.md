@@ -1,14 +1,17 @@
 # agent-evals
 
-Test how well an AI agent does its job. Run it over a fixed set of questions, score what comes back,
-get a report. Works with any agent in any framework — you hand it a function. No required dependencies.
+Measure four things about an AI agent: whether the answer is right, whether it took sensible steps to
+get there, what it cost in time and money, and whether it broke any rules. Give it a fixed set of
+questions; it runs each several times, scores all four, and reports a range around every number.
+
+Works with any agent in any framework — you hand it a function. No required dependencies.
 
 ## Why
 
 - **Agents aren't repeatable.** The same question twice gives different wording, tools, cost, sometimes
   a different answer. One run tells you little, so this repeats each question and reports the spread.
 - **Right isn't enough.** An agent can be correct while wasting twenty steps, calling a tool it
-  shouldn't, or costing a dollar a question. So it scores four things: answer, steps, speed and cost, rules.
+  shouldn't, or costing a dollar a question. One accuracy number hides all of that.
 
 ## Install
 
