@@ -87,15 +87,24 @@ class Tolerance:
     kind: ToleranceKind
     value: float
     floor: float = 0.0
+    # An answer that writes "1.2M" has rounded before you ever see it, so holding it to the precision
+    # of 1,240,000 fails it for the wording rather than the figure. Pass `abbreviated=True` to widen
+    # for that one comparison; it is a property of how the claim was written, not of the metric, so it
+    # must never be applied to a claim that was stated exactly.
+    abbreviated_multiplier: float = 1.0
 
     def __post_init__(self) -> None:
         if self.kind not in ("absolute", "relative"):
             raise ValueError("tolerance kind must be 'absolute' or 'relative'")
-        for field_name, number in (("value", self.value), ("floor", self.floor)):
+        for field_name, number in (
+            ("value", self.value),
+            ("floor", self.floor),
+            ("abbreviated_multiplier", self.abbreviated_multiplier),
+        ):
             if not math.isfinite(number) or number < 0:
                 raise ValueError(f"tolerance {field_name} must be finite and non-negative")
 
-    def matches(self, claimed: float, expected: float) -> bool:
+    def matches(self, claimed: float, expected: float, *, abbreviated: bool = False) -> bool:
         """Whether a claimed number is within this tolerance of the expected one."""
 
         if not math.isfinite(claimed) or not math.isfinite(expected):
@@ -104,7 +113,8 @@ class Tolerance:
         if self.kind == "absolute":
             allowed = self.value
         else:
-            allowed = max(self.value * abs(expected), self.floor)
+            multiplier = self.abbreviated_multiplier if abbreviated else 1.0
+            allowed = max(self.value * multiplier * abs(expected), self.floor)
         # A boundary value can land a float-representation hair past `allowed`
         # (0.0665 - 0.066 == 0.0005000000000000004); isclose absorbs that without widening the tolerance.
         return difference <= allowed or math.isclose(difference, allowed, rel_tol=1e-9, abs_tol=1e-12)
