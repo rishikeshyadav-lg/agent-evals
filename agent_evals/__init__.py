@@ -154,6 +154,7 @@ from .scoring.policy import (
     is_policy_denial,
     policy_flag,
 )
+from .scoring.reference import FieldVerdict, SqlReference, reference_criteria
 from .scoring.trajectory import (
     AllowedTools,
     ArgumentCorrectness,
@@ -336,6 +337,9 @@ __all__ = [
     "StatedNumber",
     "number_near",
     "numbers_in_text",
+    "SqlReference",
+    "FieldVerdict",
+    "reference_criteria",
     "ScoreResult",
     "Unmeasured",
     "ScoreValue",
