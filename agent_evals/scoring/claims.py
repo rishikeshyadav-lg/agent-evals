@@ -76,35 +76,6 @@ def numbers_in_text(text: str) -> list[StatedNumber]:
     return [_stated(match) for match in _NUMBER.finditer(text) if match.group("number")]
 
 
-def number_near(text: str, label: str, *, window: int = DEFAULT_WINDOW) -> StatedNumber | None:
-    """The figure stated nearest to `label`, or None when the label or a number beside it is absent.
-
-    Each mention of the label is searched outward to `window` characters, nearest number first, so
-    "spend was $18,450" and "$18,450 of spend" both resolve. Returning None rather than guessing is
-    the point: a caller can then say it found no figure for that field, which is a different thing
-    from the agent getting it wrong.
-    """
-
-    if not label.strip():
-        raise ValueError("label must be non-empty")
-    for start in _mentions(text, label):
-        offset, end = _whole_numbers(text, max(0, start - window), min(len(text), start + len(label) + window))
-        around = text[offset:end]
-        after = start + len(label)
-        found = [
-            (match.start() + offset, _stated(match)) for match in _NUMBER.finditer(around) if match.group("number")
-        ]
-        # Prefer a figure stated after the label ("spend was $18,450"), because the nearest number
-        # overall is often the previous field's: in "clicks were 900, spend was 400" the 900 sits
-        # closer to "spend" than its own figure does. Fall back to one before for "$18,450 of spend".
-        following = [pair for pair in found if pair[0] >= after]
-        if following:
-            return min(following, key=lambda pair: pair[0] - after)[1]
-        if found:
-            return min(found, key=lambda pair: start - pair[0])[1]
-    return None
-
-
 def numbers_by_label(text: str, labels: Sequence[str], *, window: int = DEFAULT_WINDOW) -> dict[str, StatedNumber]:
     """Each label's figure, resolved together so no field takes another's number.
 
@@ -118,6 +89,8 @@ def numbers_by_label(text: str, labels: Sequence[str], *, window: int = DEFAULT_
     absent from the result, which is how a caller tells "not stated" from "stated wrongly".
     """
 
+    if any(not label.strip() for label in labels):
+        raise ValueError("every label must be non-empty")
     mentions = [(label, start) for label in labels for start in _mentions(text, label)]
     if not mentions:
         return {}
@@ -154,20 +127,3 @@ def _mentions(text: str, label: str) -> list[int]:
 
     pattern = re.compile(rf"(?<!\w){re.escape(label)}(?!\w)", re.IGNORECASE)
     return [match.start() for match in pattern.finditer(text)]
-
-
-_NUMERIC = "0123456789,."
-
-
-def _whole_numbers(text: str, start: int, end: int) -> tuple[int, int]:
-    """Widen a slice until neither edge sits inside a number.
-
-    Cutting "18,450" in the middle leaves the parser a fragment it reads as a perfectly good figure:
-    the window used to turn 18,450 into 1845 with nothing to show anything had gone wrong.
-    """
-
-    while start > 0 and text[start - 1] in _NUMERIC and text[start] in _NUMERIC:
-        start -= 1
-    while end < len(text) and text[end] in _NUMERIC and text[end - 1] in _NUMERIC:
-        end += 1
-    return start, end
