@@ -405,18 +405,24 @@ def report_markdown(report: Report) -> str:
         f"Rule applied: {suite.rule}",
         "",
     ]
+    # Named in the headline and not only in the table below: this is the sentence people quote, and a
+    # mean over a third of the dataset otherwise reads as a verdict on the whole of it.
+    excluded = len(suite.unmeasured_case_ids)
+    left_out = f" {excluded} case(s) could not be measured and were left out." if excluded else ""
     if suite.passed is not None:
         lines.append(
             f"Result: {'passed' if suite.passed else 'FAILED'} "
             f"({suite.pass_rate:.1%} of {suite.case_count} cases passed"
             + (f"; failing: {', '.join(suite.failing_case_ids)}" if suite.failing_case_ids else "")
             + ")"
+            + left_out
         )
     else:
         assert suite.interval is not None
         lines.append(
             f"Result: mean {suite.mean_score:.3f} over {suite.case_count} cases, "
-            f"range {suite.interval.lower:.3f} to {suite.interval.upper:.3f}; no pass or fail for a capability suite."
+            f"range {suite.interval.lower:.3f} to {suite.interval.upper:.3f}; "
+            f"no pass or fail for a capability suite.{left_out}"
         )
     lines += [
         "",

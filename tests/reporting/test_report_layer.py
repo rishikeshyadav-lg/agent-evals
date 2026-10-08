@@ -473,3 +473,41 @@ async def test_only_measured_entries_become_mlflow_metrics() -> None:
     assert "scorecard.plan_adherence" not in metrics
     assert "scorecard.success_rate.lower" in metrics
     assert "scorecard.policy_violation.lower" not in metrics  # a share of runs has no range
+
+
+def test_the_headline_sentence_says_how_many_cases_went_unmeasured() -> None:
+    """The Result line is the sentence people quote. A mean over one case of three reads as a
+    verdict on all three unless it says otherwise."""
+
+    import asyncio
+
+    from agent_evals import AnswerRubric, SuiteRule, WeightedRubric, run_suite
+
+    rubric = AnswerRubric(
+        criteria={"figures": lambda case, output: 1.0},
+        rubric=WeightedRubric(weights={"figures": 1.0}),
+    )
+    cases = [
+        EvaluationCase(
+            f"u{index}",
+            {},
+            expected={"requires": ["figures", "interpretation"] if index else ["figures"]},
+        )
+        for index in range(3)
+    ]
+    dataset = EvaluationDataset("unmeasured", "v1", cases)
+    manifest = DatasetManifest.from_dataset(dataset, suite="capability")
+    rule = SuiteRule("accuracy", unmeasured_cases="exclude")
+    run = asyncio.run(
+        run_suite(
+            dataset, manifest, [EvaluationVariant("v")],
+            lambda case, variant: PredictionResult(answer="x"), rubric,
+            metric_id="m", metric_version="1", settings=RunSettings(repeats=1),
+        )
+    )  # fmt: skip
+    record = RunRecord.from_run(run, manifest, "v", run_id="r")
+    report = build_report(
+        run, manifest, "v", record=record, rule=rule, metrics=ScorecardMetrics(success="accuracy")
+    )
+
+    assert "2 case(s) could not be measured and were left out" in report_markdown(report)

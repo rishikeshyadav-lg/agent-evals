@@ -16,6 +16,9 @@ Accuracy stops claiming more than it measured. The prerequisite for every criter
   `Unmeasured` carrying the exception, so a bug in a criterion stays visible instead of silently
   marking good answers wrong.
 
+- The Result line now says how many cases could not be measured. It is the sentence people quote,
+  and a mean over one case of four otherwise reads as a verdict on all four.
+
 ### Added
 - `build_dataset(..., requires=...)`, so mined cases can declare what each question demands. Yours
   to supply, for the same reason `classify` is: deciding that "notable trends" demands an
