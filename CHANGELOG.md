@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 0.2.0
+## 0.2.0 — 2026-10-07
 
 Accuracy as named criteria, and checking an agent's figures against your own tables.
 
@@ -44,4 +44,3 @@ That repository keeps the full history; this one starts fresh.
   unmeasured.
 - `dry_run` in shadow comparison is a request the agent must honour; nothing is sandboxed.
 - Policy checks detect violations; they do not enforce them.
-- A tool-less chat agent and an HTTP agent are not covered end to end by a test.

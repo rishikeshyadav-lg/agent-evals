@@ -22,11 +22,11 @@ Works with any agent in any framework — you hand it a function. No required de
 ## Install
 
 ```bash
-pip install agent-evals
+pip install "git+https://github.com/rishikeshyadav-lg/agent-evals@v0.2.0"
 ```
 
-Pin a version — `agent-evals==0.1.0` — if you are comparing scores over time. The library changing under
-you between runs would change the numbers along with it.
+Not on PyPI yet, so install from the tag. Pin that tag if you are comparing scores over time: the
+library changing under you between runs would change the numbers along with it.
 
 ## First eval
 
@@ -120,6 +120,52 @@ statistics, threshold calibration, and an optional MLflow log (`pip install "age
 Two scorers are experimental — plan adherence and multi-step coherence ask a model to judge the agent's
 reasoning, and nobody has measured how often it agrees with a human. Reports using them say so.
 
+## Checking figures against your own database
+
+An agent that writes "spend was $18,450" is either right or wrong, and your table knows which. Give a
+case the query that settles it:
+
+```python
+case = EvaluationCase("q1", {"prompt": "how did spring do?"}, expected={"reference": {
+    "sql": "SELECT SUM(spend) AS spend, SUM(clicks) AS clicks FROM delivery WHERE campaign = :name",
+    "parameters": {"name": "spring"},
+    "fields": {"spend": "spent", "clicks": "clicks"},   # column -> the word to look for in the answer
+}})
+
+accuracy = AnswerRubric(
+    criteria=reference_criteria(SqlReference(execute=open_executor("sqlite", {"path": "my.db"}))),
+    rubric=WeightedRubric(weights={"figures": 0.7, "completeness": 0.3}),
+)
+```
+
+Everything above imports flat: `from agent_evals import AnswerRubric, SqlReference,
+reference_criteria, open_executor, WeightedRubric`.
+
+The report then names the field, not just a score:
+
+```
+summer: clicks said 980, table says 615      a wrong figure
+autumn: never stated clicks                  an omitted figure, which costs completeness, not correctness
+winter: not checked - the query returned no rows
+```
+
+Those are three different failures with three different fixes, which is why they are reported apart.
+A question your table cannot answer is **excluded, never scored zero** — the agent is not blamed for a
+row that does not exist.
+
+**Any database.** `open_executor` ships one adapter, `sqlite`. Everything else is a function you
+supply, which is why this package has no dependencies:
+
+```python
+SqlExecutor = Callable[[str, Mapping[str, Any]], Awaitable[list[dict]]]
+```
+
+Six lines over your own driver and `SqlReference` never learns which database is behind it. Write
+`:name` parameters; if your driver wants another style, your function rewrites it. The SQL itself is
+yours — the library never writes a query or guesses what a question means.
+
+Runnable: `examples/agent_evals_sql_reference/`.
+
 ## Verify the claims
 
 ```bash
@@ -128,44 +174,49 @@ python -m agent_evals.selfcheck
 
 ```
 ok: importing agent_evals loads none of langchain, langchain_core, learning_control_plane, litellm, mlflow, openai, penguiflow
+ok: the database layer loads no adapter until one is asked for by name
 ok: 3 agent shapes (plain function, coroutine function, callable object) scored identically
+     (timing and spend are measured per run, so they are reported but not compared)
+     success_rate: 1.0
+     tool_selection: 1.0
 ```
 
-No framework, model client or backend is pulled in, and the same agent written three ways scores
-identically. Exits non-zero on failure, so it runs in CI.
+No framework, model client or backend is pulled in, no database driver loads until you name one,
+and the same agent written three ways scores identically. Exits non-zero on failure, so it runs in CI.
 
 ## Repo layout
 
 ```
-agent_evals/      the package: five folders, plus __init__.py, selfcheck.py and py.typed
-tests/            408 tests, mirroring the package folders, plus contract/
-examples/         two runnable examples
+agent_evals/      the package: six folders, plus __init__.py, selfcheck.py and py.typed
+tests/            479 tests, mirroring the package folders, plus contract/
+examples/         three runnable examples
 pyproject.toml    zero dependencies; mlflow is the one optional extra
 CHANGELOG.md      version history and known limits
 ```
 
 No `src/` layout, no `docs/`, no CI config. Everything is re-exported, so
-`from agent_evals import ExactMatch` works regardless of which folder a name lives in — you never import
-these paths directly.
+`from agent_evals import ExactMatch` works regardless of which folder a name lives in, so you never need
+to import these paths directly.
 
-### The package, 26 modules
+### The package, 32 modules
 
 | Folder | Modules | Notes |
 |---|---|---|
 | `core/` | `evaluation`, `datasets`, `prediction`, `steps`, `evidence`, `splits` | The shapes everything else speaks in. Cases, datasets and variants live in **`evaluation`**, not `datasets`. |
 | `running/` | `runner`, `execution`, `suites`, `comparison`, `shadow` | Repeats, concurrency, the two suite kinds, comparing variants, shadow runs against recorded inputs. |
-| `scoring/` | `outcome`, `trajectory`, `operational`, `policy`, `golden`, `judging`, `llm_judge` | One module per layer, in the order above: answer, steps, speed and cost, rules. `llm_judge` holds the two experimental scorers. |
+| `scoring/` | `outcome`, `trajectory`, `operational`, `policy`, `golden`, `judging`, `llm_judge`, `answer`, `claims`, `reference` | One module per layer, in the order above: answer, steps, speed and cost, rules. `llm_judge` holds the two experimental scorers. |
 | `stats/` | `statistics`, `calibration`, `repeatability`, `thresholds`, `profiles` | Paired bootstrap intervals, run-to-run noise, pass@k, and the bars a promotion gate uses. |
+| `sql/` | `executor`, `registry`, `sqlite` | What a database has to offer: run a statement, return rows. The registry loads no adapter until one is asked for by name. |
 | `reporting/` | `report`, `diffing`, `mlflow_backend` | The scorecard, run-to-run diffs, and the only module with an optional dependency. |
 
 ### Tests
 
-`pip install -e ".[dev]"` then `pytest`. 408 tests: **391 pass, 18 skip.**
+`pip install -e ".[dev]"` then `pytest`. 479 tests: **461 pass, 18 skip.**
 
 | Folder | Covers |
 |---|---|
 | `core/`, `running/`, `scoring/`, `stats/`, `reporting/` | The matching package folder |
-| `contract/` | What the package promises as a whole: agent shapes, the self-check, and that both examples still run |
+| `contract/` | What the package promises as a whole: agent shapes, the self-check, and that the offline examples still run |
 
 The 18 skips need something this repository deliberately does not depend on, and each says so as it
 skips: LangChain for the live example, the `penguiflow` monorepo for the cross-package parity checks,
@@ -174,7 +225,11 @@ and `mlflow` for one reporting test.
 ### Examples
 
 - `examples/agent_evals_quickstart/` — a plain function with two tools, offline, no credentials.
-- `examples/agent_evals_live_langchain/` — a real LangChain agent on a live model endpoint. Needs
-  credentials and network; its test drives it offline with a scripted model instead.
+- `examples/agent_evals_sql_reference/` — figures checked against a table, offline on in-memory SQLite.
+- `examples/agent_evals_live_langchain/` — a real LangChain agent on a live model endpoint. **Not
+  runnable outside the original monorepo:** it imports `learning_control_plane`, which is not published.
+  Its test drives it offline with a scripted model instead.
 
-Version `0.1.0`, extracted from the `penguiflow` monorepo, which keeps the full history.
+Run one with `python examples/<name>/flow.py` from a clone. Needs Python 3.11 or newer.
+
+Version `0.2.0`, extracted from the `penguiflow` monorepo, which keeps the full history.

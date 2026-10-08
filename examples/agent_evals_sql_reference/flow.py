@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 
 from agent_evals import (
+    AnswerRubric,
     DatasetManifest,
     EvaluationCase,
     EvaluationDataset,
@@ -36,12 +37,11 @@ from agent_evals import (
     Tolerance,
     WeightedRubric,
     build_report,
+    open_executor,
+    reference_criteria,
     report_markdown,
     run_suite,
 )
-from agent_evals.scoring.answer import AnswerRubric
-from agent_evals.scoring.reference import reference_criteria
-from agent_evals.sql import open_executor
 
 # ---- your warehouse, which here is a file that never touches disk ------------------------------------
 DELIVERY = [
