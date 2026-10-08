@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.14.0 — 2026-10-08
+
+A judge can now be reached by name, and one read the real agent's figures.
+
+### Added
+- `agent_evals.judges`, the mirror of `agent_evals.sql`: `open_judge(name, settings)` resolves a
+  model client lazily, so no provider SDK enters `import agent_evals`. The selfcheck still passes.
+- `open_judge("databricks", {...})` for a Databricks model serving endpoint. `temperature` defaults
+  to 0, because a judge asked the same question on every run should not move when nothing about the
+  agent did. No default endpoint: changing the model changes every score it produced, so which model
+  judges belongs in a config a reader can see.
+
+### Measured on three real production answers
+With `JudgeClaims` on `databricks-claude-haiku-4-5`, against the same warehouse rows:
+
+| | parser | judge |
+|---|---|---|
+| figures correct | 9 of 12 | 12 of 12 |
+
+The judge is also right in a way the parser cannot be. One answer gave clicks only as four
+per-placement rows that sum to the true 6,521 and never stated a campaign total. The parser bound
+the first row's 5,020 to "clicks" and reported a **wrong figure**; the judge reported **no figure
+stated**, which moved it to coverage (0.5) where it belongs. Those two verdicts need different
+fixes, and only the second is true.
+
+### Notes
+- A judge's reply arrives wrapped in a markdown fence from some endpoints; the existing scan for the
+  first JSON object already handles it.
+- Structured `extra["figures"]` still outranks both, and the parser is still the default.
+
 ## 0.13.0 — 2026-10-08
 
 Reading an answer's figures is now a seam, so a model can do it where a parser cannot.
