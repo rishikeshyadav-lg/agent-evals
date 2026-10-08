@@ -155,6 +155,7 @@ from .scoring.policy import (
     policy_flag,
 )
 from .scoring.reference import FieldVerdict, SqlReference, reference_criteria
+from .scoring.scope import EntityScope
 from .scoring.trajectory import (
     AllowedTools,
     ArgumentCorrectness,
@@ -250,6 +251,7 @@ __all__ = [
     "DETECTION_MULTIPLIER",
     "DatasetManifest",
     "DomainJudge",
+    "EntityScope",
     "EXAMPLE_PROFILES",
     "EffectDeclaration",
     "EvaluationBackend",

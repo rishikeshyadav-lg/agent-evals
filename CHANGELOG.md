@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.0 — 2026-10-08
+
+The second criterion of accuracy: is the answer about the thing that was asked about.
+
+### Added
+- `EntityScope`, a deterministic scope criterion. A case declares
+  `expected["scope"] = {"entity": ..., "aliases": [...], "pattern": ...}`; the answer scores 1.0
+  when it names the entity, 0.0 when it names a different one of the same kind instead, and
+  `Unmeasured` when there is no evidence either way.
+- The entity comes from the case, never from the agent. Taking it from the agent's own call asks
+  the thing under test what it was supposed to be doing, and a wrong answer then agrees with itself.
+
+### Notes
+- Naming the right entity alongside others still scores 1.0; a comparison legitimately names both,
+  and the others are recorded in the detail. Whether the agent actually *fetched* the right one
+  cannot be read from text — that needs its tool arguments and is a separate check.
+- Without a `pattern` the criterion cannot recognise another entity, so it reports `Unmeasured`
+  rather than inventing a verdict the case gave it no way to reach.
+
 ## 0.8.0 — 2026-10-08
 
 Accuracy stops claiming more than it measured. The prerequisite for every criterion still to come.
