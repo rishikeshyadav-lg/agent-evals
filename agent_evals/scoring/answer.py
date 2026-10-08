@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..core.evaluation import EvaluationCase, _await_value
@@ -104,6 +104,7 @@ class AnswerRubric:
 
     criteria: Mapping[str, Criterion]
     rubric: WeightedRubric
+    reported_only: Mapping[str, Criterion] = field(default_factory=dict)
     failure_codes_of: Callable[[EvaluationCase, Any], Sequence[str] | Awaitable[Sequence[str]]] = (
         _no_failure_codes
     )
@@ -119,6 +120,30 @@ class AnswerRubric:
                 f"scorers without weights={sorted(named - weighted)}, "
                 f"weights without scorers={sorted(weighted - named)}"
             )
+        both = named & set(self.reported_only)
+        if both:
+            raise ValueError(f"a criterion is either weighted or reported only, not both: {sorted(both)}")
+
+    async def _quarantined(
+        self, criterion: str, case: EvaluationCase, output: Any
+    ) -> tuple[tuple[float, Mapping[str, Any]] | None, str]:
+        """One reported-only criterion's score, and why it has none when it has none.
+
+        The two reasons are not the same. A criterion that looked and found nothing to judge did its
+        job; one that could not run did not, and only the second leaves a requirement unmet.
+        """
+
+        try:
+            value = await _await_value(self.reported_only[criterion](case, output))
+        except Exception as error:  # noqa: BLE001 -- a judge that broke has no verdict to give
+            logger.info("Reported-only criterion %r raised", criterion, exc_info=True)
+            return None, f"the criterion raised: {type(error).__name__}: {error}"
+        if isinstance(value, Unmeasured):
+            return None, value.reason
+        if value is None:
+            return None, ""
+        score, detail = _criterion_outcome(value, criterion=criterion)
+        return (None, "") if score is None else ((score, dict(detail or {})), "")
 
     async def _codes(self, case: EvaluationCase, output: Any) -> tuple[tuple[str, ...], str]:
         """The failure codes for this answer, and why they could not be had when they could not.
@@ -163,8 +188,9 @@ class AnswerRubric:
         # A question asking for three things, scored on one, must not report a headline. Figures
         # being right says nothing about trends nobody checked, and calling that accuracy is how an
         # answer covering a third of the question scored full marks.
-        for required in self.requires_of(case):
-            if required in unmeasured:
+        required_names = list(self.requires_of(case))
+        for required in required_names:
+            if required in unmeasured or required in self.reported_only:
                 continue
             if required not in self.criteria:
                 unmeasured[required] = "the question requires this and no criterion scores it"
@@ -182,6 +208,21 @@ class AnswerRubric:
         # whatever else could be scored, and the runs where it matters most are exactly the ones where
         # other criteria came back unmeasured: the seven recorded runs that stated confident figures
         # had every tool call return nothing.
+        # Scored and shown, but never in the roll-up, and never able to withhold it. A judge whose
+        # agreement with a person has not been measured must not move a number people act on, and an
+        # unreliable one must not be able to void the headline either.
+        for criterion in self.reported_only:
+            scored, reason = await self._quarantined(criterion, case, output)
+            if scored is not None:
+                reported[f"{self.name}.{criterion}"] = scored[0]
+                details[f"{self.name}.{criterion}"] = {**scored[1], "weighted": False, "experimental": True}
+            elif reason and criterion in required_names:
+                # Only when it could not be measured. A criterion that looked and found nothing to
+                # judge has done its job: withholding the headline there would exclude the case from
+                # the suite, and an answer that omitted what was asked would vanish from the mean
+                # instead of dragging it down.
+                unmeasured[criterion] = reason
+
         codes, codes_failed = await self._codes(case, output)
         if codes_failed:
             # A grounding check that could not run is not the same as one that found nothing. Without

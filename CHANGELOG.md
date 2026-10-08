@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.0 — 2026-10-08
+
+The fifth and last criterion: interpretation, reported beside the headline and never inside it.
+
+### Added
+- `Interpretation`, which asks a model whether an answer's conclusions follow from the data it
+  showed. Built as its own criterion rather than on `JudgeScorer`, which cannot say a criterion did
+  not apply, cannot say the judge was unreachable, and drops the verdict's codes.
+- `AnswerRubric(reported_only=...)`: criteria that are scored and shown but never weighted. An
+  unvalidated judge must not move a number people act on, and an unreliable one must not be able to
+  void the headline either.
+- Every reported-only score is marked `experimental` and `weighted: False` in its detail, so a
+  reader can tell which numbers were validated and which were not.
+
+### Notes
+- Promoting it into the weights is a decision for after `validate_judge` has measured how often it
+  agrees with a person. It is the one criterion that can make a number worse by being added.
+- An unreadable reply, an unknown outcome and an unreachable judge are all `Unmeasured`, never zero.
+  Scoring zero would call the answer wrong on the strength of the judge malfunctioning.
+
 ## 0.11.0 — 2026-10-08
 
 The fourth criterion: completeness, in its two halves. And two extraction bugs it uncovered.

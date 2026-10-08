@@ -91,6 +91,7 @@ from .scoring.golden import (
     refresh_golden,
     save_golden,
 )
+from .scoring.interpretation import Interpretation
 from .scoring.judging import (
     AgreementReport,
     Comparison,
@@ -275,6 +276,7 @@ __all__ = [
     "GoldenApproval",
     "GoldenRefreshError",
     "GoldenTrajectory",
+    "Interpretation",
     "Invariant",
     "InvariantReport",
     "InvariantsHold",
