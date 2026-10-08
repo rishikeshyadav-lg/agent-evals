@@ -21,11 +21,11 @@ checked.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..core.evaluation import EvaluationCase
+from ..core.evaluation import EvaluationCase, _await_value
 from ..core.prediction import MultiScoreResult, Unmeasured
 from ..sql.executor import SqlExecutor
 from .claims import DEFAULT_WINDOW, StatedNumber, numbers_by_label
@@ -33,6 +33,30 @@ from .outcome import Tolerance, answer_of
 
 CASE_KEY = "reference"
 FIGURES_KEY = "figures"
+
+Claimed = Mapping[str, "StatedNumber | float | None"]
+"""What an answer claimed per field, as the parser's richer value or a plain number."""
+ClaimReader = Callable[[str, Mapping[str, str], Mapping[str, float]], Claimed | Awaitable[Claimed]]
+"""What an answer claimed for each field: the answer, the fields, and the true values.
+
+The truth is passed in so a reader can verify rather than extract. "The table says 173 -- does this
+answer state that as the total?" has a right answer that can be checked later; "what did it state?"
+invites a number to be invented, and an invented figure here is indistinguishable from the agent
+having stated one.
+"""
+
+
+def _claims_by_distance(answer: str, fields: Mapping[str, str], truth: Mapping[str, float]) -> Claimed:
+    """The default reader: the figure nearest each field's label.
+
+    Exact on a sentence and unreliable on a document, where a metric's name appears in a totals
+    table, a breakdown and the prose, and proximity cannot tell which one is the headline.
+    """
+
+    stated = numbers_by_label(answer, list(fields.values()))
+    # StatedNumber rather than a bare float: it carries whether the figure was written as shorthand
+    # or as a percentage, and a tolerance widens for "18.4k" only if it knows it rounded already.
+    return {name: stated[label] for name, label in fields.items() if label in stated}
 
 
 def _query_from_case(case: EvaluationCase) -> Mapping[str, Any] | None:
@@ -107,6 +131,7 @@ class SqlReference:
     fraction_fields: Sequence[str] = ()
     query_of: Callable[[EvaluationCase], Mapping[str, Any] | None] = _query_from_case
     figures_of: Callable[[Any], Mapping[str, Any]] = _figures_from_output
+    claims_of: ClaimReader = _claims_by_distance
     window: int = DEFAULT_WINDOW
     name: str = "figures"
 
@@ -119,11 +144,15 @@ class SqlReference:
             )
         row, fields, required = truth
         # Resolved together, so a field cannot take the figure sitting next to another field's name.
-        stated_numbers = numbers_by_label(str(answer_of(output)), list(fields.values()), window=self.window)
-        verdicts = {
-            name: self._verdict(name, row[name], stated_numbers.get(label), output)
-            for name, label in fields.items()
-        }
+        answer = str(answer_of(output))
+        try:
+            claimed = await _await_value(self.claims_of(answer, fields, row))
+        except Exception as error:  # noqa: BLE001 -- a reader that broke saw nothing in the answer
+            return MultiScoreResult(
+                {f"{self.name}.measured": 0.0},
+                {f"{self.name}.measured": {"unmeasured": f"the answer could not be read: {error}"}},
+            )
+        verdicts = {name: self._verdict(name, row[name], claimed.get(name), output) for name in fields}
 
         stated = {name: verdict for name, verdict in verdicts.items() if verdict.matched is not None}
         missing = sorted(name for name in required if verdicts[name].matched is None)
@@ -183,14 +212,27 @@ class SqlReference:
         required = [name for name in wanted if name in fields]
         return {name: _as_number(row[name]) for name in fields}, fields, required
 
-    def _verdict(self, field_name: str, expected: float, stated: StatedNumber | None, output: Any) -> FieldVerdict:
+    def _verdict(
+        self, field_name: str, expected: float, claimed: StatedNumber | float | None, output: Any
+    ) -> FieldVerdict:
+        # Structured figures first, always: a number handed over as data needs neither reading nor
+        # judging, and is the only path that is exact, free and the same every run.
         structured = _as_number(self.figures_of(output).get(field_name))
         if structured is not None:
             return self._compare(field_name, expected, structured, abbreviated=False, note=None)
-        if stated is None:
+        if claimed is None:
             return FieldVerdict(expected=expected, claimed=None, matched=None)
-        claimed, note = self._read(field_name, stated)
-        return self._compare(field_name, expected, claimed, abbreviated=stated.abbreviated, note=note)
+        if isinstance(claimed, StatedNumber):
+            value, note = self._read(field_name, claimed)
+            return self._compare(field_name, expected, value, abbreviated=claimed.abbreviated, note=note)
+        # A plain number, from a reader that judged rather than parsed. It knows nothing about how
+        # the figure was written, so the one rescue left is an obvious percent-for-fraction.
+        if field_name in self.fraction_fields and abs(claimed) > abs(expected) * 50:
+            return self._compare(
+                field_name, expected, claimed / 100, abbreviated=False,
+                note="the answer wrote a percentage and the table stores a fraction",
+            )  # fmt: skip
+        return self._compare(field_name, expected, float(claimed), abbreviated=False, note=None)
 
     def _read(self, field_name: str, stated: StatedNumber) -> tuple[float, str | None]:
         """A stated figure as a number comparable to the table's, and anything odd about how it was written."""

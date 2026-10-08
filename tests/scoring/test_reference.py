@@ -226,3 +226,44 @@ def test_an_explicitly_empty_required_asks_for_none() -> None:
 
     assert "figures.coverage" not in result.scores
     assert result.scores["figures"] == pytest.approx(1.0)
+
+
+def test_a_claim_reader_replaces_the_parser_not_the_check() -> None:
+    """The truth still comes from your query and the comparison is still arithmetic. Only the
+    reading of the answer changes."""
+
+    def judged(answer: str, fields: dict, truth: dict) -> dict:
+        return {"spend": 18_450.0, "clicks": 400.0}
+
+    scorer = SqlReference(execute=_table(), claims_of=judged)
+
+    result = asyncio.run(scorer(_case(fields=["spend", "clicks"]), PredictionResult(answer="unparseable prose")))
+
+    assert result.scores["figures"] == pytest.approx(1.0)
+
+
+def test_a_claim_reader_that_fails_leaves_the_case_unmeasured() -> None:
+    """A reader that broke saw nothing in the answer, which is not the same as the answer stating
+    nothing. Scoring zero would call the agent wrong because our reader failed."""
+
+    def unavailable(answer: str, fields: dict, truth: dict) -> dict:
+        raise RuntimeError("the judge is unreachable")
+
+    scorer = SqlReference(execute=_table(), claims_of=unavailable)
+
+    result = asyncio.run(scorer(_case(), PredictionResult(answer=RIGHT)))
+
+    assert "figures" not in result.scores
+    assert "unreachable" in result.details["figures.measured"]["unmeasured"]
+
+
+def test_structured_figures_still_win_over_a_claim_reader() -> None:
+    """A figure handed over as data needs neither reading nor judging, so it outranks both."""
+
+    def wrong(answer: str, fields: dict, truth: dict) -> dict:
+        return {"spend": 1.0, "clicks": 2.0, "ctr": 3.0}
+
+    scorer = SqlReference(execute=_table(), claims_of=wrong)
+    output = PredictionResult(answer="anything", extra={"figures": dict(TRUTH)})
+
+    assert asyncio.run(scorer(_case(), output)).scores["figures"] == pytest.approx(1.0)

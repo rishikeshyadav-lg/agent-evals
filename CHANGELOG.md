@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.13.0 — 2026-10-08
+
+Reading an answer's figures is now a seam, so a model can do it where a parser cannot.
+
+### Fixed
+- **A pipe is not a list separator.** It was added to the separator set in 0.11.0, but a markdown
+  table puts a label and its own value either side of one — so `| Spend | $10,222.57 |` scored the
+  correct figure 1003 characters away and the parser took fragments from elsewhere in the document.
+  Measured on three real agent answers this took figure reading from 3/12 to 9/12.
+
+### Added
+- `SqlReference(claims_of=...)`: how an answer's claimed figures are read is now pluggable. The
+  truth still comes from your query and the comparison is still arithmetic; only the reading changes.
+- `JudgeClaims`, which asks a model instead. **It is given the true value and asked to verify, never
+  to extract** — "the table says 173, does this answer state that as the total?" has a right answer
+  that can be checked later, while "what did it state?" invites a number to be invented.
+- A reader that fails leaves the case unmeasured rather than scoring zero: a reader that broke saw
+  nothing, which is not the same as the answer stating nothing.
+
+### Notes
+- Structured figures in `extra["figures"]` still outrank both. A number handed over as data needs
+  neither reading nor judging, and is the only path that is exact, free and identical every run.
+- The parser remains the default. The judge costs a model call per case and its verdict can change
+  between runs; that is a real trade against a check that is otherwise exact.
+
 ## 0.12.0 — 2026-10-08
 
 The fifth and last criterion: interpretation, reported beside the headline and never inside it.

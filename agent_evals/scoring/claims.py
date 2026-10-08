@@ -118,7 +118,11 @@ def numbers_by_label(text: str, labels: Sequence[str], *, window: int = DEFAULT_
 # two characters after "clicks" and twelve before "impressions" -- so it bound to clicks, clicks took
 # it over its own 20,566, and impressions came away with nothing.
 SEPARATOR_PENALTY = 1_000
-_SEPARATOR = re.compile(r"[;\n•|]|,(?!\d)")
+# A pipe is deliberately absent. It looks like a separator and in a markdown table it is the
+# opposite: "| Spend | $10,222.57 |" puts a label and its own value either side of one, so treating
+# it as distance penalised every correct figure in a table and left the parser taking fragments from
+# elsewhere in the document. A newline still separates, which is what divides a table's rows.
+_SEPARATOR = re.compile(r"[;\n•]|,(?!\d)")
 
 
 def _distance(text: str, number_at: int, number_end: int, label_at: int, label_length: int) -> int:

@@ -82,6 +82,7 @@ from .running.suites import SuiteRule, SuiteVerdict, case_scores, run_suite, sui
 from .scoring.answer import SUGGESTED_CRITERIA, AnswerRubric, suggested_rubric
 from .scoring.claims import StatedNumber, numbers_by_label, numbers_in_text
 from .scoring.completeness import Completeness, OmissionCheck
+from .scoring.figure_judge import JudgeClaims
 from .scoring.golden import (
     GoldenApproval,
     GoldenRefreshError,
@@ -156,7 +157,7 @@ from .scoring.policy import (
     is_policy_denial,
     policy_flag,
 )
-from .scoring.reference import FieldVerdict, SqlReference, reference_criteria
+from .scoring.reference import ClaimReader, FieldVerdict, SqlReference, reference_criteria
 from .scoring.scope import EntityScope
 from .scoring.trajectory import (
     AllowedTools,
@@ -281,6 +282,8 @@ __all__ = [
     "InvariantReport",
     "InvariantsHold",
     "JsonlRowSink",
+    "ClaimReader",
+    "JudgeClaims",
     "JudgeClient",
     "JudgeScorer",
     "JudgeVerdict",
