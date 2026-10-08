@@ -205,3 +205,24 @@ def test_a_rubric_withholds_accuracy_when_the_table_cannot_answer() -> None:
 
     assert "accuracy" not in result.scores
     assert "no rows" in result.details["accuracy.measured"]["unmeasured"]["figures"]
+
+
+def test_an_omitted_required_asks_for_every_field() -> None:
+    """The default: a case that names fields and says nothing more wants all of them stated."""
+
+    result = _score("Spring had spend of $18,450.")
+
+    assert result.scores["figures.coverage"] == pytest.approx(1 / 3)
+    assert result.details["figures.coverage"]["never_stated"] == ["clicks", "ctr"]
+
+
+def test_an_explicitly_empty_required_asks_for_none() -> None:
+    """An open-ended question ("how is it performing") required nothing, so nothing can be missing.
+
+    `or` used to collapse this into the default, charging the answer for figures nobody asked for.
+    """
+
+    result = _score("Spring had spend of $18,450.", case=_case(required=[]))
+
+    assert "figures.coverage" not in result.scores
+    assert result.scores["figures"] == pytest.approx(1.0)

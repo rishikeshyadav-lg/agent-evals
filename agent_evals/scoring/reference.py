@@ -175,7 +175,12 @@ class SqlReference:
         unusable = sorted(name for name in fields if _as_number(row[name]) is None)
         if unusable:
             return Unmeasured(f"the reference value for {', '.join(unusable)} is not a finite number")
-        required = [name for name in (declared.get("required") or fields) if name in fields]
+        # An omitted `required` means "all of them"; an explicitly empty one means "none". They are
+        # different questions and `or` collapses them: an open-ended question ("how is it performing")
+        # required nothing, so charging the answer for a figure nobody asked for is a wrong verdict.
+        declared_required = declared.get("required")
+        wanted = fields if declared_required is None else declared_required
+        required = [name for name in wanted if name in fields]
         return {name: _as_number(row[name]) for name in fields}, fields, required
 
     def _verdict(self, field_name: str, expected: float, stated: StatedNumber | None, output: Any) -> FieldVerdict:

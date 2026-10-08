@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-10-07
+
+### Fixed
+- A case can now ask for no figures in particular. `required: []` was falsy, so it collapsed into the
+  default of every field, and an answer to an open-ended question ("how is it performing") lost
+  coverage for not volunteering figures nobody asked for. An omitted `required` still means all of
+  them; an explicitly empty one now means none.
+
 ## 0.2.0 — 2026-10-07
 
 Accuracy as named criteria, and checking an agent's figures against your own tables.
