@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.16.0 — 2026-10-08
+
+Questions whose correct answer is "that cannot be answered from this data".
+
+### Fixed
+- **An answer that correctly declined was scored wrong for being right.** On a question asking for
+  the top 30 apps by impressions, against a table with no app dimension, the reference query returns
+  campaign totals and the correct answer states the data does not exist — so `figures` scored it
+  0.0. Of 50 hand-reviewed rubrics for one agent's real traffic, 10 accept a refusal and 7 have no
+  checkable metric at all. This was not a coverage gap; it was a wrong verdict with a number
+  attached.
+
+### Added
+- `AcceptedRefusal`: scores the refusal itself, and it is not a free pass. A case that accepts a
+  refusal and gets one scores 1.0; one that accepts a refusal and gets confident figures instead
+  scores **0.0**, because those figures came from somewhere other than the source. Nothing else in
+  the library would have caught that.
+- `WhenNotRefused`: wraps any criterion so it does not apply to an answer that correctly declined.
+  Wrapping rather than teaching each criterion about refusals — `SqlReference` has no business
+  knowing what a refusal is.
+- `DataGapStated`: did the answer state the limitation it runs into? Required by 23 of those 50
+  rubrics and checked by nothing. Scored per gap, so a partially caveated answer scores partially.
+- `JudgeRefusal` and `JudgeDataGap`, the model-backed readers. Neither is ever asked whether a
+  refusal was *acceptable* — the case already says that — so the judge is only asked what it can
+  read from the text in front of it.
+
+### Verified against production
+The real rubric for a real `ranking` question, through a live judge:
+
+| answer | figures | refusal |
+|---|---|---|
+| correctly declines | does not apply | 1.000 |
+| invents a top-30 app list | coverage 0.000 | 0.000 |
+
+### Notes
+- A reader that cannot decide whether an answer declined makes the wrapped criterion `Unmeasured`,
+  never falls through to scoring. Falling through would reinstate the inversion, because on these
+  questions the reference disagrees with the right answer by design.
+- An empty answer is not a refusal. A refusal states what cannot be done and why; silence is a
+  failure that happens to look like one.
+
 ## 0.15.0 — 2026-10-08
 
 Questions that ask for a table can now be scored.

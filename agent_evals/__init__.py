@@ -83,7 +83,8 @@ from .scoring.answer import SUGGESTED_CRITERIA, AnswerRubric, suggested_rubric
 from .scoring.breakdown import SqlBreakdown
 from .scoring.claims import StatedNumber, numbers_by_label, numbers_in_text
 from .scoring.completeness import Completeness, OmissionCheck
-from .scoring.figure_judge import JudgeClaims, JudgeRows
+from .scoring.data_gap import DataGapStated
+from .scoring.figure_judge import JudgeClaims, JudgeDataGap, JudgeRefusal, JudgeRows
 from .scoring.golden import (
     GoldenApproval,
     GoldenRefreshError,
@@ -159,6 +160,7 @@ from .scoring.policy import (
     policy_flag,
 )
 from .scoring.reference import ClaimReader, FieldVerdict, SqlReference, reference_criteria
+from .scoring.refusal import AcceptedRefusal, WhenNotRefused
 from .scoring.scope import EntityScope
 from .scoring.trajectory import (
     AllowedTools,
@@ -284,8 +286,13 @@ __all__ = [
     "InvariantsHold",
     "JsonlRowSink",
     "ClaimReader",
+    "AcceptedRefusal",
+    "DataGapStated",
     "JudgeClaims",
     "JudgeRows",
+    "WhenNotRefused",
+    "JudgeRefusal",
+    "JudgeDataGap",
     "JudgeClient",
     "JudgeScorer",
     "JudgeVerdict",

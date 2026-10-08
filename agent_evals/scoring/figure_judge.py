@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -174,4 +174,111 @@ class JudgeRows:
         return stated
 
 
-__all__ = ["PROMPT", "ROWS_PROMPT", "JudgeClaims", "JudgeRows"]
+
+
+REFUSAL_PROMPT = """You are checking whether an analyst declined to answer a question.
+
+The question:
+{question}
+
+Their answer:
+---
+{answer}
+---
+
+Declining means the answer states that the request cannot be fulfilled from the available data --
+that a dimension, breakdown or field does not exist, or that the figure is unavailable. An answer
+that supplies the requested figures has NOT declined, however many caveats it adds. An answer that
+supplies something else instead of what was asked HAS declined, if it says why the original request
+could not be met.
+
+Reply with only JSON: {{"declined": true|false, "why": "<a short quotation from the answer, or \\"\\">"}}"""
+
+
+GAP_PROMPT = """You are checking whether an analyst's answer states a particular limitation.
+
+Their answer:
+---
+{answer}
+---
+
+The limitation that should be stated:
+{gap}
+
+It counts as stated if the answer makes this clear in its own words; it does not have to use the
+same wording. It does not count if the answer merely omits the figure without saying anything about
+why, or if it states a different limitation.
+
+Reply with only JSON: {{"stated": true|false, "why": "<a short quotation from the answer, or \\"\\">"}}"""
+
+
+@dataclass(frozen=True, slots=True)
+class JudgeRefusal:
+    """Decides whether an answer declined, by asking a model.
+
+    Pass it to `AcceptedRefusal(refused=...)` or `WhenNotRefused(refused=...)`. Whether a refusal was
+    *acceptable* is never asked -- the case already says that -- so the judge is only ever asked the
+    one question it can answer from the text in front of it.
+    """
+
+    client: JudgeClient
+    question_of: Callable[[Any], str] = lambda case: str(getattr(case, "inputs", {}).get("prompt", ""))
+    name: str = "refusal_judge"
+
+    async def __call__(self, case: Any, output: Any) -> bool:
+        answer = str(_answer_text(output)).strip()
+        if not answer:
+            return False
+        prompt = REFUSAL_PROMPT.format(question=self.question_of(case), answer=answer)
+        reply = await _await_value(self.client(prompt))
+        decoded = _decoded(str(reply))
+        if decoded is None:
+            raise ValueError("the refusal judge's reply could not be read as JSON")
+        declined = decoded.get("declined")
+        if not isinstance(declined, bool):
+            raise ValueError("the refusal judge did not answer with a true or false 'declined'")
+        return declined
+
+
+@dataclass(frozen=True, slots=True)
+class JudgeDataGap:
+    """Decides whether an answer states one named limitation, by asking a model.
+
+    Pass it to `DataGapStated(states=...)`. One call per gap, because a partially caveated answer
+    should score partially and a single call asked about several would collapse that.
+    """
+
+    client: JudgeClient
+    name: str = "data_gap_judge"
+
+    async def __call__(self, case: Any, output: Any, gap: str) -> bool:
+        answer = str(_answer_text(output)).strip()
+        if not answer or not gap.strip():
+            return False
+        reply = await _await_value(self.client(GAP_PROMPT.format(answer=answer, gap=gap)))
+        decoded = _decoded(str(reply))
+        if decoded is None:
+            raise ValueError("the data-gap judge's reply could not be read as JSON")
+        stated = decoded.get("stated")
+        if not isinstance(stated, bool):
+            raise ValueError("the data-gap judge did not answer with a true or false 'stated'")
+        return stated
+
+
+def _answer_text(output: Any) -> str:
+    """The answer, without importing the outcome module and making the import graph circular."""
+
+    answer = getattr(output, "answer", None)
+    return str(answer) if isinstance(answer, str) else ""
+
+
+__all__ = [
+    "GAP_PROMPT",
+    "PROMPT",
+    "REFUSAL_PROMPT",
+    "ROWS_PROMPT",
+    "JudgeClaims",
+    "JudgeDataGap",
+    "JudgeRefusal",
+    "JudgeRows",
+]
