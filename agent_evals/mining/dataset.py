@@ -59,12 +59,17 @@ def build_dataset(
     dataset_id: str,
     version: str,
     classify: Callable[[MinedQuestion], str] | None = None,
+    requires: Callable[[MinedQuestion], Sequence[str]] | None = None,
 ) -> EvaluationDataset:
     """A frozen dataset of real questions, in an order that does not depend on the backend.
 
-    `classify` is yours: what the categories are and which one a question belongs to is domain
-    knowledge, and a library that guessed would be wrong in ways you could not see. Without it the
-    source's own category is used, or none.
+    `classify` and `requires` are both yours, for the same reason: what the categories are, and what
+    a question demands be checked, are readings of what the question means. A library guessing either
+    would be wrong in ways you could not see.
+
+    `requires` matters more than it looks. A question asking for metrics, trends and recommendations
+    scores full marks on the metrics alone unless the case says the other two were wanted, because
+    the rubric cannot know what it was never told.
     """
 
     distinct = deduplicate(questions)
@@ -80,6 +85,7 @@ def build_dataset(
                 "category": classify(mined) if classify else mined.category,
                 "recorded_at": mined.recorded_at,
             },
+            expected={"requires": list(requires(mined))} if requires else None,
             source_trace_id=mined.trace_id,
         )
         for mined in distinct

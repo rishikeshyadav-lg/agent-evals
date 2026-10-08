@@ -18,6 +18,7 @@ arrived at, as a starting point and not a requirement.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -25,6 +26,8 @@ from typing import Any, Protocol
 from ..core.evaluation import EvaluationCase, _await_value
 from ..core.prediction import MultiScoreResult, ScoreValue, Unmeasured, normalize_scores
 from .outcome import WeightedRubric, score_rubric
+
+logger = logging.getLogger(__name__)
 
 # What one production agent settled on, with the weights it uses. Offered as a starting point: the
 # criteria that matter are yours, and so are the weights.
@@ -39,6 +42,24 @@ SUGGESTED_CRITERIA: Mapping[str, float] = {
 
 def _no_failure_codes(case: EvaluationCase, output: Any) -> Sequence[str]:
     return ()
+
+
+def _requires_from_case(case: EvaluationCase) -> Sequence[str]:
+    """Which criteria this question needs answered, from `expected["requires"]`.
+
+    Declared by the case rather than inferred from the question's words. Deciding that "notable
+    trends" demands an interpretation criterion is a reading of what the question means, and a
+    library that made that call would be guessing on your behalf about the one thing it is supposed
+    to be rigorous about.
+    """
+
+    expected = case.expected
+    if not isinstance(expected, Mapping):
+        return ()
+    required = expected.get("requires")
+    if isinstance(required, str) or not isinstance(required, Sequence):
+        return ()
+    return [str(name) for name in required]
 
 
 CriterionValue = ScoreValue | None | Unmeasured
@@ -84,6 +105,7 @@ class AnswerRubric:
     criteria: Mapping[str, Criterion]
     rubric: WeightedRubric
     failure_codes_of: Callable[[EvaluationCase, Any], Sequence[str]] = _no_failure_codes
+    requires_of: Callable[[EvaluationCase], Sequence[str]] = _requires_from_case
     name: str = "accuracy"
 
     def __post_init__(self) -> None:
@@ -103,7 +125,15 @@ class AnswerRubric:
         inapplicable: list[str] = []
 
         for criterion, scorer in self.criteria.items():
-            value = await _await_value(scorer(case, output))
+            try:
+                value = await _await_value(scorer(case, output))
+            except Exception as error:  # noqa: BLE001 -- a scorer that broke has no verdict to give
+                # A judge that is down, rate-limited or returned unparseable text is a failure of the
+                # measurement, not of the agent. Left to propagate it becomes a case error, and a case
+                # error is scored 0.0 -- so a flaky model would quietly report the agent as wrong.
+                logger.info("Criterion %r raised", criterion, exc_info=True)
+                unmeasured[criterion] = f"the criterion raised: {type(error).__name__}: {error}"
+                continue
             if isinstance(value, Unmeasured):
                 unmeasured[criterion] = value.reason
                 continue
@@ -113,6 +143,17 @@ class AnswerRubric:
                 inapplicable.append(criterion)
             elif detail:
                 details[f"{self.name}.{criterion}"] = detail
+
+        # A question asking for three things, scored on one, must not report a headline. Figures
+        # being right says nothing about trends nobody checked, and calling that accuracy is how an
+        # answer covering a third of the question scored full marks.
+        for required in self.requires_of(case):
+            if required in unmeasured:
+                continue
+            if required not in self.criteria:
+                unmeasured[required] = "the question requires this and no criterion scores it"
+            elif scores.get(required) is None:
+                unmeasured[required] = "the question requires this and its criterion did not apply"
 
         reported: dict[str, float] = {
             f"{self.name}.{criterion}": score for criterion, score in scores.items() if score is not None

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.0 — 2026-10-08
+
+Accuracy stops claiming more than it measured. The prerequisite for every criterion still to come.
+
+### Fixed
+- **A question asking for three things, scored on one, reported full marks.** A real question —
+  metrics, notable trends, and recommended actions — scored `accuracy 1.000` on an answer giving
+  only the metrics, because `figures` was the only criterion wired and the roll-up was still called
+  accuracy. A case now declares `expected["requires"]`, and anything required with no criterion
+  withholds the headline and names what went unchecked.
+- **A criterion that raised scored the agent zero.** It propagated out of the rubric, became a case
+  error, and `case_scores` counts an errored row as `0.0`. A judge that is down, rate-limited or
+  returning unparseable text is a failure of the measurement, not of the agent; it is now
+  `Unmeasured` carrying the exception, so a bug in a criterion stays visible instead of silently
+  marking good answers wrong.
+
+### Added
+- `build_dataset(..., requires=...)`, so mined cases can declare what each question demands. Yours
+  to supply, for the same reason `classify` is: deciding that "notable trends" demands an
+  interpretation criterion is a reading of what the question means.
+
 ## 0.7.0 — 2026-10-08
 
 First release intended for PyPI, and the adapter that makes the detected config work.

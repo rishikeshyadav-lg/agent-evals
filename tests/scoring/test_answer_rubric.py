@@ -94,3 +94,101 @@ def test_a_criterion_scorer_reporting_several_numbers_is_refused() -> None:
 def test_the_suggested_rubric_covers_the_five_criteria() -> None:
     assert set(suggested_rubric().weights) == set(SUGGESTED_CRITERIA)
     assert sum(SUGGESTED_CRITERIA.values()) == pytest.approx(1.0)
+
+
+def _figures_only_rubric() -> AnswerRubric:
+    """A rubric with one criterion wired, which is the state every real setup starts in."""
+
+    return AnswerRubric(
+        criteria={"figures": lambda case, output: 1.0},
+        rubric=WeightedRubric(weights={"figures": 1.0}),
+    )
+
+
+def test_a_question_needing_more_than_is_scored_gets_no_headline() -> None:
+    """The failure this exists for. A real three-part question -- metrics, trends, recommended
+    actions -- scored 1.000 on an answer that gave only the metrics."""
+
+    case = EvaluationCase("q", {}, expected={"requires": ["figures", "interpretation"]})
+
+    result = asyncio.run(_figures_only_rubric()(case, PredictionResult(answer="spend was $8,392,901")))
+
+    assert "accuracy" not in result.scores
+    assert result.scores["accuracy.figures"] == pytest.approx(1.0)
+    assert "interpretation" in result.details["accuracy.measured"]["unmeasured"]
+
+
+def test_the_reason_names_what_went_unchecked() -> None:
+    """"Not measured" without saying which part is a dead end for whoever reads the report."""
+
+    case = EvaluationCase("q", {}, expected={"requires": ["interpretation"]})
+
+    result = asyncio.run(_figures_only_rubric()(case, PredictionResult(answer="anything")))
+
+    assert "no criterion scores it" in result.details["accuracy.measured"]["unmeasured"]["interpretation"]
+
+
+def test_requiring_only_what_is_wired_still_reports_a_headline() -> None:
+    """The guard must not withhold everything; a case whose needs are met scores normally."""
+
+    case = EvaluationCase("q", {}, expected={"requires": ["figures"]})
+
+    result = asyncio.run(_figures_only_rubric()(case, PredictionResult(answer="spend was $1")))
+
+    assert result.scores["accuracy"] == pytest.approx(1.0)
+
+
+def test_a_case_that_declares_nothing_behaves_as_before() -> None:
+    """Existing datasets declare no requirements and must keep working unchanged."""
+
+    result = asyncio.run(_figures_only_rubric()(EvaluationCase("q", {}), PredictionResult(answer="x")))
+
+    assert result.scores["accuracy"] == pytest.approx(1.0)
+
+
+def test_a_criterion_that_did_not_apply_still_counts_as_unchecked_when_required() -> None:
+    """None means "does not apply to this question". If the case says it does apply, the two
+    disagree, and the honest reading is that nobody checked it."""
+
+    rubric = AnswerRubric(
+        criteria={"figures": lambda case, output: 1.0, "scope": lambda case, output: None},
+        rubric=WeightedRubric(weights={"figures": 0.7, "scope": 0.3}),
+    )
+    case = EvaluationCase("q", {}, expected={"requires": ["scope"]})
+
+    result = asyncio.run(rubric(case, PredictionResult(answer="x")))
+
+    assert "accuracy" not in result.scores
+    assert "did not apply" in result.details["accuracy.measured"]["unmeasured"]["scope"]
+
+
+def test_a_criterion_that_raises_is_unmeasured_not_a_zero() -> None:
+    """A judge that is down, rate-limited, or returned unparseable text is a failure of the
+    measurement, not of the agent. Left to propagate it becomes a case error, and a case error is
+    scored 0.0 -- so a flaky model would quietly report a good answer as wrong."""
+
+    def unreachable(case: EvaluationCase, output: object) -> float:
+        raise RuntimeError("the judge was unreachable")
+
+    rubric = AnswerRubric(
+        criteria={"interpretation": unreachable},
+        rubric=WeightedRubric(weights={"interpretation": 1.0}),
+    )
+
+    result = asyncio.run(rubric(EvaluationCase("q", {}), PredictionResult(answer="a good answer")))
+
+    assert "accuracy" not in result.scores
+    assert "unreachable" in result.details["accuracy.measured"]["unmeasured"]["interpretation"]
+
+
+def test_the_raised_reason_names_the_exception_so_a_bug_is_visible() -> None:
+    """Swallowing it as a bare "not measured" would hide a bug in the criterion itself."""
+
+    def broken(case: EvaluationCase, output: object) -> float:
+        return 1 / 0
+
+    rubric = AnswerRubric(criteria={"figures": broken}, rubric=WeightedRubric(weights={"figures": 1.0}))
+
+    result = asyncio.run(rubric(EvaluationCase("q", {}), PredictionResult(answer="x")))
+
+    assert "ZeroDivisionError" in result.details["accuracy.measured"]["unmeasured"]["figures"]
