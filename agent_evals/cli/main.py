@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any
 
@@ -213,6 +214,133 @@ def _write_dataset(logs: Path, dataset: Any, manifest: Any) -> Path:
         + "\n"
     )
     return path
+
+
+@app.command()
+def draft(
+    root: Path = typer.Option(Path("."), help="the agent's root directory"),
+    version: str = typer.Option("v1", help="which mined dataset to draft for"),
+) -> None:
+    """Propose a reference query for each mined question, run it, and set aside the ones that fail."""
+
+    from ..drafting import store, verify
+    from .drafters import load_drafter
+    from .telemetry import span
+
+    settings = _loaded(root)
+    logs = _prepared_logs(root, settings)
+    questions = _mined_questions(logs, version)
+    drafter = load_drafter(root, settings)
+    if drafter is None:
+        typer.echo("no drafter configured. Add [drafting] to agent-evals.toml naming a module:attribute.")
+        raise typer.Exit(1)
+
+    execute = _executor(settings)
+    existing = store.load(logs)
+    fresh = [q for q in questions if q.trace_id not in existing]
+    typer.echo(f"{len(questions)} questions, {len(existing)} already decided, {len(fresh)} to draft")
+
+    drafted = []
+    for question in fresh:
+        with span("draft", case_id=question.trace_id):
+            proposal = asyncio.run(_drafted(drafter, question))
+        if proposal is None:
+            continue
+        rows, failure = asyncio.run(_ran(execute, proposal))
+        drafted.append(proposal.reject(failure) if failure else proposal.checked(verify(rows, proposal.fields)))
+
+    merged = store.merge(existing, drafted)
+    written = store.save(logs, merged)
+    verified = sum(1 for d in merged.values() if d.status == "verified")
+    rejected = sum(1 for d in merged.values() if d.status == "rejected")
+    typer.echo(f"{len(drafted)} drafted: {verified} ready for review, {rejected} rejected before you see them")
+    typer.echo(f"wrote {written}")
+    typer.echo("next: agent-evals review")
+
+
+@app.command()
+def review(
+    root: Path = typer.Option(Path("."), help="the agent's root directory"),
+    limit: int = typer.Option(0, help="review at most this many; all of them by default"),
+) -> None:
+    """Show each verified query and the row it returned, and record what you decide."""
+
+    from ..drafting import store
+
+    settings = _loaded(root)
+    logs = _prepared_logs(root, settings)
+    drafts = store.load(logs)
+    waiting = [d for d in drafts.values() if d.status == "verified"]
+    if not waiting:
+        typer.echo("nothing waiting for review. Run `agent-evals draft` first.")
+        raise typer.Exit(0 if drafts else 1)
+
+    for draft_item in waiting[: limit or len(waiting)]:
+        _show(draft_item)
+        answer = typer.prompt("approve? [y/n/s=skip]", default="s").strip().lower()
+        if answer.startswith("y"):
+            drafts[draft_item.case_id] = draft_item.approve()
+        elif answer.startswith("n"):
+            drafts[draft_item.case_id] = draft_item.reject(typer.prompt("why"))
+
+    store.save(logs, drafts)
+    approved = sum(1 for d in drafts.values() if d.scoreable)
+    typer.echo(f"{approved} approved and ready to score")
+    typer.echo("next: agent-evals run")
+
+
+def _show(draft_item: Any) -> None:
+    """The question, the query, and the row it returned.
+
+    The row is the point. A reviewer shown only SQL checks that it parses; the failure that matters
+    is a query that runs perfectly and answers a different question than the one asked.
+    """
+
+    typer.echo("")
+    typer.echo(f"  case     {draft_item.case_id}")
+    typer.echo(f"  question {draft_item.question}")
+    typer.echo(f"  sql      {draft_item.sql}")
+    typer.echo(f"  params   {dict(draft_item.parameters)}")
+    typer.echo(f"  RETURNED {dict(draft_item.check.row or {})}")
+
+
+async def _drafted(drafter: Any, question: Any) -> Any:
+    proposal = drafter(question)
+    return await proposal if isinstance(proposal, Awaitable) else proposal
+
+
+async def _ran(execute: Any, proposal: Any) -> tuple[list[dict[str, Any]], str]:
+    """Run the draft. A query that raises is the drafter's failure, not the database's."""
+
+    try:
+        return await execute(proposal.sql, dict(proposal.parameters)), ""
+    except Exception as error:  # noqa: BLE001 -- any failure here means this draft cannot be used
+        return [], f"the query failed: {type(error).__name__}: {error}"
+
+
+def _executor(settings: configuration.Config) -> Any:
+    from ..sql import open_executor
+
+    return open_executor(settings.database, dict(settings.database_settings))
+
+
+def _mined_questions(logs: Path, version: str) -> list[Any]:
+    from ..mining import MinedQuestion
+
+    path = logs / f"dataset-{version}.json"
+    if not path.exists():
+        typer.echo(f"no mined dataset at {path}. Run `agent-evals mine` first.")
+        raise typer.Exit(1)
+    cases = json.loads(path.read_text())["cases"]
+    return [
+        MinedQuestion(
+            question=case["inputs"]["prompt"],
+            trace_id=case["source_trace_id"] or case["case_id"],
+            recorded_at=case["inputs"].get("recorded_at", ""),
+            category=case["inputs"].get("category", ""),
+        )
+        for case in cases
+    ]
 
 
 def _telemetry_finding() -> tuple[str, str]:

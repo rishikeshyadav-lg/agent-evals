@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0 — 2026-10-08
+
+`agent-evals draft` and `review`: a query per question, and the gate it has to pass.
+
+### Added
+- `agent_evals.drafting`: a `QueryDrafter` seam, and `TemplateDrafter`, which fills a query you
+  wrote from a value found in the question. Deterministic, offline, and it declines rather than
+  guessing when the pattern does not match.
+- A review gate in two parts. The mechanical one rejects anything that cannot be ground truth: the
+  query raised, returned nothing, returned more than one row, is missing a field, or a figure is not
+  finite. The human one catches the query that runs perfectly and answers the wrong question.
+- `approve` takes a verified check, so a draft cannot be accepted without the row it returned. A
+  reviewer shown only SQL is reviewing syntax, and syntax is not what goes wrong here.
+- Drafts persist, so a slow review survives interruption, and re-drafting never replaces a decision
+  already made.
+- `agent-evals draft` and `agent-evals review`.
+
+### Notes
+- An aggregate over no matching rows returns one row of nulls, not zero rows. That is reported as a
+  filter matching nothing, rather than as bad data, so the author looks at the WHERE clause.
+
 ## 0.4.0 — 2026-10-08
 
 `agent-evals mine`: the questions people actually asked, as a dataset you can run twice.

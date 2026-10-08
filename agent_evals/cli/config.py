@@ -30,6 +30,8 @@ class Config:
 
     `agent` names the deployment under test and `database` the adapter behind `open_executor`; both
     are names, never credentials. `logs` is the directory this tool writes to, relative to the root.
+    `drafter` is `module:attribute` naming the thing that proposes reference queries, which lives in
+    your project because what a question means is yours to decide.
     """
 
     agent: str
@@ -37,6 +39,7 @@ class Config:
     database_settings: Mapping[str, Any] = field(default_factory=dict)
     table: str = ""
     logs: str = "eval-logs"
+    drafter: str = ""
     traces: Mapping[str, Any] = field(default_factory=dict)
     otlp_endpoint: str = ""
 
