@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 — 2026-10-08
+
+First release intended for PyPI, and the adapter that makes the detected config work.
+
+### Added
+- A Databricks adapter: `open_executor("databricks", {...})`, behind `agent-evals[databricks]`.
+  Authentication is never passed in — the SDK already resolves it from the environment or
+  `~/.databrickscfg`, and asking again would mean copying credentials that are already on the machine.
+- Parameters go as parameter markers, never formatted into the statement. An evaluation runs queries
+  built from text that came out of a trace, so that is a safety property, not a style choice.
+
+### Fixed
+- `init` wrote `database = "databricks"` whenever it found a warehouse, and no such adapter existed.
+  Every config it produced for a warehouse-backed project raised `KeyError` at the first query.
+
 ## 0.6.0 — 2026-10-08
 
 Onboarding rewritten. `agent-evals init` now reads what your project already records.

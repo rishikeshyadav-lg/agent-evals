@@ -18,10 +18,11 @@ from .executor import AdapterNotInstalled, SqlExecutor
 # name -> "module:function", resolved only when that name is asked for.
 _ADAPTERS: Mapping[str, str] = {
     "sqlite": "agent_evals.sql.sqlite:open_sqlite",
+    "databricks": "agent_evals.sql.databricks:open_databricks",
 }
 
 # name -> the extra that installs its driver, for the message when it is missing.
-_EXTRAS: Mapping[str, str] = {}
+_EXTRAS: Mapping[str, str] = {"databricks": "databricks"}
 
 
 def adapter_names() -> tuple[str, ...]:

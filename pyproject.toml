@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-evals"
-version = "0.6.0"
+version = "0.7.0"
 description = "Agent-agnostic evaluation: run any agent over a fixed dataset, score it, compare variants, and report with honest statistics."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,6 +32,7 @@ agent-evals = "agent_evals.cli.main:main"
 
 [project.optional-dependencies]
 mlflow = ["mlflow>=2.10"]
+databricks = ["databricks-sdk>=0.30"]
 # The CLI is what you install at the agent's root, and it requires OpenTelemetry. The library it
 # wraps stays dependency-free, which is the property `python -m agent_evals.selfcheck` proves.
 cli = [

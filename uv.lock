@@ -18,7 +18,7 @@ resolution-markers = [
 
 [[package]]
 name = "agent-evals"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -26,6 +26,9 @@ cli = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
     { name = "typer" },
+]
+databricks = [
+    { name = "databricks-sdk" },
 ]
 dev = [
     { name = "mypy" },
@@ -39,6 +42,7 @@ mlflow = [
 
 [package.metadata]
 requires-dist = [
+    { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.30" },
     { name = "mlflow", marker = "extra == 'mlflow'", specifier = ">=2.10" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'cli'", specifier = ">=1.25" },
@@ -48,7 +52,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12" },
 ]
-provides-extras = ["mlflow", "cli", "dev"]
+provides-extras = ["mlflow", "databricks", "cli", "dev"]
 
 [[package]]
 name = "aiohappyeyeballs"

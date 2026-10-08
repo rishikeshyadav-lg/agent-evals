@@ -22,11 +22,21 @@ Works with any agent in any framework — you hand it a function. No required de
 ## Install
 
 ```bash
-pip install "git+https://github.com/rishikeshyadav-lg/agent-evals@v0.6.0"
+pip install agent-evals
 ```
 
-Not on PyPI yet, so install from the tag. Pin that tag if you are comparing scores over time: the
-library changing under you between runs would change the numbers along with it.
+Zero dependencies. Add what you need:
+
+```bash
+pip install "agent-evals[cli]"         # the agent-evals command
+pip install "agent-evals[databricks]"  # read a Databricks SQL warehouse
+pip install "agent-evals[mlflow]"      # mine questions from MLflow traces, log reports to it
+```
+
+Quote the brackets: most shells read them as a filename pattern. Needs Python 3.11 or newer.
+
+Pin a version if you are comparing scores over time — the library changing under you between runs
+would change the numbers along with it.
 
 ## First eval
 
@@ -232,4 +242,4 @@ and `mlflow` for one reporting test.
 
 Run one with `python examples/<name>/flow.py` from a clone. Needs Python 3.11 or newer.
 
-Version `0.6.0`, extracted from the `penguiflow` monorepo, which keeps the full history.
+Version `0.7.0`, extracted from the `penguiflow` monorepo, which keeps the full history.
