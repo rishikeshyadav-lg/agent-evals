@@ -92,10 +92,17 @@ class SqlBreakdown:
     rows_of: Callable[[Any], Mapping[str, Any]] = _rows_from_output
     name: str = "breakdown"
 
-    async def __call__(self, case: EvaluationCase, output: Any) -> MultiScoreResult | Unmeasured | None:
+    async def __call__(self, case: EvaluationCase, output: Any) -> MultiScoreResult | Unmeasured:
         truth = await self.ground_truth(case)
-        if isinstance(truth, Unmeasured) or truth is None:
+        if isinstance(truth, Unmeasured):
             return truth
+        if truth is None:
+            # No breakdown declared, so this scorer reports nothing. An empty result rather than
+            # None: None is the `AnswerRubric` convention for "the criterion does not apply", and
+            # this cannot be a rubric criterion -- it returns two scores where a criterion must
+            # return one -- so it runs as a plain scorer, where None is not a score at all and
+            # raises. That raise cost a whole paid run.
+            return MultiScoreResult({}, {})
         expected_rows, fields = truth
 
         structured = self._structured(expected_rows, fields, output)
@@ -140,7 +147,8 @@ class SqlBreakdown:
         """The rows the case's query returns, keyed by its key column.
 
         `None` when the case declares no breakdown, so a suite can mix questions that ask for one
-        with questions that do not.
+        with questions that do not. `__call__` turns that into an empty result, because a plain
+        scorer has to return a score value.
         """
 
         declared = self.query_of(case)

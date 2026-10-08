@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.18.1 — 2026-10-08
+
+Two fixes found by the first real run, one of which cost a batch of paid agent calls.
+
+### Fixed
+- **A scoring failure no longer discards the answer it was scoring.** `run_case_variant` caught every
+  exception and returned a result with no `output`, so a bug in a scorer threw away the prediction —
+  39 recorded runs against a deployed agent, every one with an empty `answer`, unrescorable, the
+  whole batch wasted on a fixable mistake. The output is now carried on the error path, so a run can
+  be scored again offline instead of bought again.
+- **`SqlBreakdown` no longer returns `None` for a case that declares no breakdown.** `None` is the
+  `AnswerRubric` convention for "this criterion does not apply", and `SqlBreakdown` cannot be a
+  rubric criterion — it returns two scores where a criterion must return one — so it runs as a plain
+  scorer, where `None` is not a score value and raises. It now reports an empty result. This was the
+  bug that wasted the batch above.
+
 ## 0.18.0 — 2026-10-08
 
 Why a run went wrong, where its time went, and where its money went.

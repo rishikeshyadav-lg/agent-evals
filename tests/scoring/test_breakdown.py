@@ -94,13 +94,23 @@ def test_an_answer_giving_no_breakdown_at_all_scores_zero_rather_than_unmeasured
     assert result.scores["breakdown.rows"] == pytest.approx(0.0)
 
 
-def test_a_case_declaring_no_breakdown_does_not_apply() -> None:
-    """None, not zero, so a suite can mix questions asking for a breakdown with questions that do
-    not, and the ones that do not are left out of the mean."""
+def test_a_case_declaring_no_breakdown_reports_nothing_rather_than_raising() -> None:
+    """An empty result, not None. None is the rubric's "does not apply" convention, and this cannot
+    be a rubric criterion -- it returns two scores where a criterion must return one -- so it runs as
+    a plain scorer, where None is not a score value and raises. That raise cost a whole paid run of
+    39 agent calls, every one of them recorded with an empty answer."""
 
     scorer = SqlBreakdown(execute=_execute(), read_rows=_all_weeks_stated())
 
-    assert asyncio.run(scorer(EvaluationCase("q", {}, expected={}), PredictionResult(answer="x"))) is None
+    result = asyncio.run(scorer(EvaluationCase("q", {}, expected={}), PredictionResult(answer="x")))
+
+    assert result.scores == {}
+
+
+def test_a_case_declaring_no_breakdown_has_no_ground_truth_to_find() -> None:
+    scorer = SqlBreakdown(execute=_execute(), read_rows=_all_weeks_stated())
+
+    assert asyncio.run(scorer.ground_truth(EvaluationCase("q", {}, expected={}))) is None
 
 
 def test_a_reader_that_fails_leaves_the_case_unmeasured() -> None:

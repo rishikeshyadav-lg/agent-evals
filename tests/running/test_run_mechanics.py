@@ -20,6 +20,7 @@ from agent_evals import (
     TransientError,
     run_repeated,
 )
+from agent_evals.running.runner import run_case_variant
 
 ROW_KEYS = {
     "answer",
@@ -377,3 +378,24 @@ def test_a_row_written_before_the_variant_key_was_renamed_still_reads() -> None:
     assert row.result.variant_id == "base"
     assert row.record()["variant_id"] == "base"
     assert "arm" not in row.record()
+
+
+def test_a_scoring_failure_keeps_the_answer_it_was_handed() -> None:
+    """A paid run against a deployed agent costs money per answer, and a bug in a scorer used to
+    discard the answer it was scoring -- 39 recorded runs with an empty `answer`, unrescorable, a
+    whole batch wasted on a fixable mistake. Keeping the output means the run can be scored again
+    offline instead of bought again."""
+
+    async def run_one(case, variant):
+        return PredictionResult(answer="spend was 10,222.57", latency_ms=1_234.0)
+
+    def broken(case, output):
+        raise ValueError("this scorer is broken")
+
+    case = EvaluationCase("c1", {"query": "a"}, expected=1)
+
+    result = asyncio.run(run_case_variant(case, EvaluationVariant("v"), run_one, [broken]))
+
+    assert result.error.startswith("ValueError")
+    assert result.output.answer == "spend was 10,222.57"
+    assert result.latency_ms == pytest.approx(1_234.0)

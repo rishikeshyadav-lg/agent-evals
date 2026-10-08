@@ -242,4 +242,4 @@ and `mlflow` for one reporting test.
 
 Run one with `python examples/<name>/flow.py` from a clone. Needs Python 3.11 or newer.
 
-Version `0.18.0`, extracted from the `penguiflow` monorepo, which keeps the full history.
+Version `0.18.1`, extracted from the `penguiflow` monorepo, which keeps the full history.

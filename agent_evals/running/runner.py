@@ -69,6 +69,8 @@ async def run_case_variant(
 ) -> VariantCaseResult:
     """Run and score one case with one variant, recording a failure instead of raising it."""
 
+    output: Any = None
+    reported: dict[str, Any] = {}
     try:
         output = await _await_value(run_one(case, variant))
         reported = _reported_usage(output)
@@ -80,8 +82,17 @@ async def run_case_variant(
             variant_id=variant.variant_id, output=output, metrics=metrics, score_details=details, **reported
         )
     except Exception as error:
+        # The output is carried even when scoring is what failed. A paid run against a deployed
+        # agent costs real money per answer, and a bug in a scorer used to discard the answer it
+        # was handed -- 30 recorded runs with an empty `answer`, unrescorable, the whole batch
+        # wasted on a fixable mistake. Keeping it means the run can be scored again offline.
         logger.info("Evaluation case failed", exc_info=True)
-        return VariantCaseResult(variant_id=variant.variant_id, error=f"{type(error).__name__}: {error}")
+        return VariantCaseResult(
+            variant_id=variant.variant_id,
+            output=output,
+            error=f"{type(error).__name__}: {error}",
+            **reported,
+        )
 
 
 async def run_cases(
