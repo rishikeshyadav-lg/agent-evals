@@ -104,7 +104,9 @@ class AnswerRubric:
 
     criteria: Mapping[str, Criterion]
     rubric: WeightedRubric
-    failure_codes_of: Callable[[EvaluationCase, Any], Sequence[str]] = _no_failure_codes
+    failure_codes_of: Callable[[EvaluationCase, Any], Sequence[str] | Awaitable[Sequence[str]]] = (
+        _no_failure_codes
+    )
     requires_of: Callable[[EvaluationCase], Sequence[str]] = _requires_from_case
     name: str = "accuracy"
 
@@ -117,6 +119,20 @@ class AnswerRubric:
                 f"scorers without weights={sorted(named - weighted)}, "
                 f"weights without scorers={sorted(weighted - named)}"
             )
+
+    async def _codes(self, case: EvaluationCase, output: Any) -> tuple[tuple[str, ...], str]:
+        """The failure codes for this answer, and why they could not be had when they could not.
+
+        Allowed to be async, because the checks that produce them — a model asked whether a claim is
+        supported — are network calls.
+        """
+
+        try:
+            found = await _await_value(self.failure_codes_of(case, output))
+        except Exception as error:  # noqa: BLE001 -- a check that broke has no finding to report
+            logger.info("failure_codes_of raised", exc_info=True)
+            return (), f"the check could not run: {type(error).__name__}: {error}"
+        return tuple(found), ""
 
     async def __call__(self, case: EvaluationCase, output: Any) -> MultiScoreResult:
         scores: dict[str, float | None] = {}
@@ -160,11 +176,23 @@ class AnswerRubric:
         }
         # Always reported, so the reason a headline is missing has somewhere to live and so a report
         # can say how many cases went unchecked.
-        reported[f"{self.name}.measured"] = 0.0 if (unmeasured or not reported) else 1.0
-        details[f"{self.name}.measured"] = {
-            "unmeasured": dict(unmeasured),
-            "did_not_apply": list(inapplicable),
-        }
+        reported_scores = bool(reported)
+
+        # Gathered before the headline is decided, not after. A fabricated figure is worth recording
+        # whatever else could be scored, and the runs where it matters most are exactly the ones where
+        # other criteria came back unmeasured: the seven recorded runs that stated confident figures
+        # had every tool call return nothing.
+        codes, codes_failed = await self._codes(case, output)
+        if codes_failed:
+            # A grounding check that could not run is not the same as one that found nothing. Without
+            # this, a run with no credentials is indistinguishable from a run where every answer was
+            # clean -- which is the more flattering reading, and the wrong one.
+            unmeasured["failure_codes"] = codes_failed
+        measured: dict[str, Any] = {"unmeasured": dict(unmeasured), "did_not_apply": list(inapplicable)}
+        if codes:
+            measured["failure_codes"] = list(codes)
+        details[f"{self.name}.measured"] = measured
+        reported[f"{self.name}.measured"] = 0.0 if (unmeasured or not reported_scores) else 1.0
 
         if unmeasured or not any(score is not None for score in scores.values()):
             # The weighted average of whatever happened to work is not accuracy, and reporting it as
@@ -174,10 +202,15 @@ class AnswerRubric:
 
         for criterion in self.criteria:
             scores.setdefault(criterion, None)
-        result = score_rubric(self.rubric, scores, failure_codes=tuple(self.failure_codes_of(case, output)))
-        reported[self.name] = result.score
+        result = score_rubric(self.rubric, scores, failure_codes=codes)
+        # A failure code means the answer failed, so the headline says so. `score_rubric` keeps the
+        # weighted score deliberately -- it is the diagnosis -- but a capability suite averages this
+        # metric, and an answer that invented a figure sitting at 1.0 in that mean because the
+        # figures it did state happened to match is the overclaiming this rubric exists to prevent.
+        reported[self.name] = 0.0 if result.failure_codes else result.score
         details[self.name] = {
             "passed": result.passed,
+            "score_before_failure": result.score if result.failure_codes else None,
             "applicable": list(result.applicable),
             "effective_weights": dict(result.effective_weights),
             "failure_codes": list(result.failure_codes),

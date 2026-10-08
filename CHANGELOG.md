@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.10.0 — 2026-10-08
+
+The third criterion: grounding, which enters as a failure code rather than a score.
+
+### Changed
+- `failure_codes_of` may now be async, because the checks that produce codes — a model asked
+  whether a claim is supported — are network calls.
+- Codes are gathered **before** the headline is decided. A fabricated figure is worth recording
+  whatever else could be scored, and the runs where it matters most are exactly the ones where
+  other criteria came back unmeasured.
+- **A failure code now zeroes the reported headline.** `score_rubric` keeps the weighted score
+  deliberately, as the diagnosis, and it is preserved under `score_before_failure`. But a capability
+  suite averages the headline, and an answer that invented a figure sitting at 1.0 in that mean —
+  because the figures it did state happened to match — is exactly the overclaiming this rubric is for.
+- A grounding check that cannot run is no longer a clean bill. Without credentials it finds nothing,
+  which looks identical to every answer being clean; that reading is more flattering and wrong, so
+  it is recorded as unmeasured and the headline is withheld.
+
+### Notes
+- Grounding is never a score. It can fail a run and never verify one, so there is no `grounding`
+  number and the report never says an answer was grounded — only that nothing was detected.
+- The check runs once per case regardless of how many criteria the rubric has, by construction.
+
 ## 0.9.0 — 2026-10-08
 
 The second criterion of accuracy: is the answer about the thing that was asked about.

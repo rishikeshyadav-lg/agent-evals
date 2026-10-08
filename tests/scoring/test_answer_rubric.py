@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from agent_evals import EvaluationCase, PredictionResult, WeightedRubric
+from agent_evals import EvaluationCase, PredictionResult, Unmeasured, WeightedRubric
 from agent_evals.scoring.answer import SUGGESTED_CRITERIA, AnswerRubric, suggested_rubric
 
 CASE, OUTPUT = EvaluationCase("c1", {}), PredictionResult(answer="x")
@@ -192,3 +192,86 @@ def test_the_raised_reason_names_the_exception_so_a_bug_is_visible() -> None:
     result = asyncio.run(rubric(EvaluationCase("q", {}), PredictionResult(answer="x")))
 
     assert "ZeroDivisionError" in result.details["accuracy.measured"]["unmeasured"]["figures"]
+
+
+async def _invention_found(case: EvaluationCase, output: object) -> tuple[str, ...]:
+    """Stands in for a grounding check: four questions put to a model, a finding at a bar."""
+
+    return ("invented_figure",) if "770.5M" in str(getattr(output, "answer", "")) else ()
+
+
+def _grounded_rubric(check=_invention_found) -> AnswerRubric:
+    return AnswerRubric(
+        criteria={"figures": lambda case, output: 1.0},
+        rubric=WeightedRubric(weights={"figures": 1.0}),
+        failure_codes_of=check,
+    )
+
+
+def test_a_fabricated_answer_fails_and_scores_zero() -> None:
+    """The figures it did state matched, so the weighted score was 1.0. An answer that invented a
+    figure sitting at 1.0 in a capability suite's mean is the overclaiming this rubric prevents."""
+
+    fabricated = PredictionResult(answer="impressions were 770.5M")
+
+    result = asyncio.run(_grounded_rubric()(EvaluationCase("q", {}), fabricated))
+
+    assert result.scores["accuracy"] == pytest.approx(0.0)
+    assert result.details["accuracy"]["passed"] is False
+    assert result.details["accuracy"]["failure_codes"] == ["invented_figure"]
+
+
+def test_the_measured_score_survives_for_diagnosis() -> None:
+    """Zeroing the headline must not destroy what the criteria actually found."""
+
+    fabricated = PredictionResult(answer="impressions were 770.5M")
+
+    result = asyncio.run(_grounded_rubric()(EvaluationCase("q", {}), fabricated))
+
+    assert result.details["accuracy"]["score_before_failure"] == pytest.approx(1.0)
+
+
+def test_a_clean_answer_is_unaffected() -> None:
+    result = asyncio.run(_grounded_rubric()(EvaluationCase("q", {}), PredictionResult(answer="spend was $1")))
+
+    assert result.scores["accuracy"] == pytest.approx(1.0)
+    assert result.details["accuracy"]["score_before_failure"] is None
+
+
+def test_a_finding_is_recorded_even_when_nothing_could_be_scored() -> None:
+    """The runs where this matters most are the ones where other criteria came back unmeasured:
+    the seven recorded runs that stated confident figures had every tool call return nothing."""
+
+    rubric = AnswerRubric(
+        criteria={"figures": lambda case, output: Unmeasured("no reference query")},
+        rubric=WeightedRubric(weights={"figures": 1.0}),
+        failure_codes_of=_invention_found,
+    )
+
+    result = asyncio.run(rubric(EvaluationCase("q", {}), PredictionResult(answer="impressions were 770.5M")))
+
+    assert "accuracy" not in result.scores
+    assert result.details["accuracy.measured"]["failure_codes"] == ["invented_figure"]
+
+
+def test_a_grounding_check_that_cannot_run_is_not_a_clean_bill() -> None:
+    """Without credentials the check finds nothing, which looks identical to every answer being
+    clean. That is the more flattering reading and the wrong one."""
+
+    async def unavailable(case: EvaluationCase, output: object) -> tuple[str, ...]:
+        raise RuntimeError("TYPESAFE_API_KEY is not set")
+
+    result = asyncio.run(_grounded_rubric(unavailable)(EvaluationCase("q", {}), PredictionResult(answer="clean")))
+
+    assert "accuracy" not in result.scores
+    assert "TYPESAFE_API_KEY" in result.details["accuracy.measured"]["unmeasured"]["failure_codes"]
+
+
+def test_failure_codes_may_be_synchronous() -> None:
+    """Existing callers pass a plain function and must keep working."""
+
+    rubric = _grounded_rubric(lambda case, output: ("some_code",))
+
+    result = asyncio.run(rubric(EvaluationCase("q", {}), PredictionResult(answer="x")))
+
+    assert result.details["accuracy"]["failure_codes"] == ["some_code"]
