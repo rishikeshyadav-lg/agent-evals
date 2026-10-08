@@ -81,6 +81,7 @@ from .running.shadow import (
 from .running.suites import SuiteRule, SuiteVerdict, case_scores, run_suite, suite_verdict
 from .scoring.answer import SUGGESTED_CRITERIA, AnswerRubric, suggested_rubric
 from .scoring.claims import StatedNumber, numbers_by_label, numbers_in_text
+from .scoring.completeness import Completeness, OmissionCheck
 from .scoring.golden import (
     GoldenApproval,
     GoldenRefreshError,
@@ -240,6 +241,7 @@ __all__ = [
     "CaseResult",
     "CheckStatus",
     "Comparison",
+    "Completeness",
     "ComparisonRequest",
     "ComparisonResult",
     "ComparisonRunner",
@@ -302,6 +304,7 @@ __all__ = [
     "PairedMetricValue",
     "PairedPrompt",
     "PercentileEstimate",
+    "OmissionCheck",
     "PolicyCheck",
     "PolicyFlag",
     "PolicyReport",

@@ -24,7 +24,10 @@ from dataclasses import dataclass
 # still stops "5kb" being read as five thousand.
 _NUMBER = re.compile(
     r"(?P<currency>[$£€])?\s*"
-    r"(?P<number>-?\d[\d,]*(?:\.\d+)?)"
+    # A number never ends in a comma. Without the inner group "900," matched whole, which made its
+    # span run up to the next label and the gap between them look empty -- so a figure bound to the
+    # label on the far side of a list separator.
+    r"(?P<number>-?\d(?:[\d,]*\d)?(?:\.\d+)?)"
     r"\s*(?:(?P<magnitude>thousand|million|billion|k|m|bn|b)\b)?"
     r"\s*(?P<percent>%)?",
     re.IGNORECASE,
@@ -100,7 +103,7 @@ def numbers_by_label(text: str, labels: Sequence[str], *, window: int = DEFAULT_
             continue
         at = match.start()
         label, distance = min(
-            ((label, _distance(at, start, len(label))) for label, start in mentions),
+            ((label, _distance(text, at, match.end(), start, len(label))) for label, start in mentions),
             key=lambda pair: pair[1],
         )
         if distance > window:
@@ -110,12 +113,27 @@ def numbers_by_label(text: str, labels: Sequence[str], *, window: int = DEFAULT_
     return {label: stated for label, (_, stated) in claimed.items()}
 
 
-def _distance(number_at: int, label_at: int, label_length: int) -> int:
-    """How far a number sits from a label, counting zero when it touches either end of it."""
+# A list separator between a number and a label means they are different items. Raw character
+# distance does not see that, and in "20,566 clicks, 592,877,053 impressions" the second figure sits
+# two characters after "clicks" and twelve before "impressions" -- so it bound to clicks, clicks took
+# it over its own 20,566, and impressions came away with nothing.
+SEPARATOR_PENALTY = 1_000
+_SEPARATOR = re.compile(r"[;\n•|]|,(?!\d)")
+
+
+def _distance(text: str, number_at: int, number_end: int, label_at: int, label_length: int) -> int:
+    """How far a number sits from a label, counting a list separator between them as far away.
+
+    The comma inside "592,877,053" is not a separator, so only a comma not followed by a digit
+    counts -- which is what tells "clicks, 592,877,053" apart from the number's own grouping.
+    """
 
     if number_at < label_at:
-        return label_at - number_at
-    return max(0, number_at - (label_at + label_length))
+        gap, plain = text[number_end:label_at], label_at - number_end
+    else:
+        label_end = label_at + label_length
+        gap, plain = text[label_end:number_at], number_at - label_end
+    return max(0, plain) + (SEPARATOR_PENALTY if _SEPARATOR.search(gap) else 0)
 
 
 def _mentions(text: str, label: str) -> list[int]:

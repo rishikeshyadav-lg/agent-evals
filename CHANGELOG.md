@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.11.0 — 2026-10-08
+
+The fourth criterion: completeness, in its two halves. And two extraction bugs it uncovered.
+
+### Added
+- `Completeness`, combining a countable coverage score with an optional check that can report an
+  omission. The asymmetry is deliberate: the reading check can only *lower* the score, because
+  having looked and found nothing missing is not the same as having established nothing is missing.
+- Routing is the caller's. A project whose omission check already fails the case through
+  `failure_codes_of` leaves `omission_of` unset and nothing is counted twice.
+- A configured check that cannot run withholds rather than reporting the countable half alone.
+
+### Fixed
+- **A figure bound to the label on the wrong side of a list separator.** In
+  `"20,566 clicks, 592,877,053 impressions"` the second figure sits two characters after "clicks"
+  and twelve before "impressions", so on raw distance it bound to clicks, clicks took it over its
+  own 20,566, and impressions came away with nothing. A separator between a number and a label now
+  counts as far away; the comma inside `592,877,053` is not one.
+- **A number could end in a comma.** `"900,"` matched whole, so its span ran up to the next label
+  and the gap between them looked empty — which is how a figure crossed a separator unnoticed.
+
 ## 0.10.0 — 2026-10-08
 
 The third criterion: grounding, which enters as a failure code rather than a score.

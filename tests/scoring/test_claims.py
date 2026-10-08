@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_evals.scoring.claims import numbers_by_label, numbers_in_text
+from agent_evals.scoring.claims import _NUMBER, numbers_by_label, numbers_in_text
 
 ANSWER = "Northwind delivered 1,240,000 impressions, a CTR of 0.42% and spend of $18,450."
 
@@ -115,3 +115,37 @@ def test_a_number_far_from_its_label_is_read_whole() -> None:
     far = "spend" + " " * 55 + "18,450"
 
     assert _value(far, "spend", ["spend"], window=60) == pytest.approx(18_450.0)
+
+
+def test_a_figure_does_not_bind_across_a_list_separator() -> None:
+    """Real answers list metrics: "20,566 clicks, 592,877,053 impressions". The second figure sits
+    two characters after "clicks" and twelve before "impressions", so on raw distance it bound to
+    clicks, clicks took it over its own 20,566, and impressions came away with nothing."""
+
+    found = numbers_by_label(
+        "spent $8,392,901, 20,566 clicks, 592,877,053 impressions", ["spent", "clicks", "impressions"]
+    )
+
+    assert found["spent"].value == pytest.approx(8_392_901)
+    assert found["clicks"].value == pytest.approx(20_566)
+    assert found["impressions"].value == pytest.approx(592_877_053)
+
+
+def test_a_number_never_ends_in_a_comma() -> None:
+    """"900," matched whole, so its span ran up to the next label and the gap between them looked
+    empty -- which is how a figure bound to the label on the far side of a separator."""
+
+    assert [match.group("number") for match in _NUMBER.finditer("clicks were 900, spend was 400")] == ["900", "400"]
+
+
+def test_the_comma_inside_a_grouped_number_is_not_a_separator() -> None:
+    assert numbers_by_label("impressions 592,877,053", ["impressions"])["impressions"].value == pytest.approx(
+        592_877_053
+    )
+
+
+def test_a_semicolon_separates_as_a_comma_does() -> None:
+    found = numbers_by_label("spend 1,200; clicks 34; impressions 9,000", ["spend", "clicks", "impressions"])
+
+    assert found["clicks"].value == pytest.approx(34)
+    assert found["impressions"].value == pytest.approx(9_000)
