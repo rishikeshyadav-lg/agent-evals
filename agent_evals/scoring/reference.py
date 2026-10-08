@@ -73,6 +73,31 @@ def _query_from_case(case: EvaluationCase) -> Mapping[str, Any] | None:
     return reference if isinstance(reference, Mapping) else None
 
 
+def _accepted_values(
+    declared: Mapping[str, Any], row: Mapping[str, Any], fields: Mapping[str, str]
+) -> dict[str, tuple[float, ...]]:
+    """Every value a field's figure may match, the field's own column first.
+
+    Some requirements are genuinely satisfied by either of two columns. A reviewed rubric for one
+    agent asks for "a reach figure: device_reach ~203,646 or ip_reach ~178,540 (either is
+    acceptable)", because both are honest answers to "what was the reach" and the agent is not
+    wrong for picking one. Comparing against a single column would fail whichever it did not pick.
+
+    Declared as `alternatives: {field: [other_column, ...]}` beside the fields, and those columns
+    have to be in the query's own result -- an acceptable value nobody selected is not a value.
+    """
+
+    accepted: dict[str, tuple[float, ...]] = {}
+    declared_alternatives = declared.get("alternatives")
+    extra = declared_alternatives if isinstance(declared_alternatives, Mapping) else {}
+    for name in fields:
+        values = [_as_number(row.get(name))]
+        for column in extra.get(name) or ():
+            values.append(_as_number(row.get(str(column))))
+        accepted[name] = tuple(value for value in values if value is not None)
+    return accepted
+
+
 def _figures_from_output(output: Any) -> Mapping[str, Any]:
     """Figures the agent returned as data, under `PredictionResult.extra["figures"]`.
 
@@ -143,6 +168,8 @@ class SqlReference:
                 {f"{self.name}.measured": {"unmeasured": truth.reason}},
             )
         row, fields, required = truth
+        declared = self.query_of(case) or {}
+        accepted = _accepted_values(declared, row, fields)
         # Resolved together, so a field cannot take the figure sitting next to another field's name.
         answer = str(answer_of(output))
         try:
@@ -152,7 +179,10 @@ class SqlReference:
                 {f"{self.name}.measured": 0.0},
                 {f"{self.name}.measured": {"unmeasured": f"the answer could not be read: {error}"}},
             )
-        verdicts = {name: self._verdict(name, row[name], claimed.get(name), output) for name in fields}
+        verdicts = {
+            name: self._verdict(name, accepted.get(name) or (row[name],), claimed.get(name), output)
+            for name in fields
+        }
 
         stated = {name: verdict for name, verdict in verdicts.items() if verdict.matched is not None}
         missing = sorted(name for name in required if verdicts[name].matched is None)
@@ -210,10 +240,19 @@ class SqlReference:
         declared_required = declared.get("required")
         wanted = fields if declared_required is None else declared_required
         required = [name for name in wanted if name in fields]
-        return {name: _as_number(row[name]) for name in fields}, fields, required
+        # Alternative columns ride along in the truth row. They are not fields -- nothing requires
+        # them and no label looks for them -- but `_accepted_values` needs their values, and this is
+        # the only place the query's full result is still in scope.
+        truth = {name: _as_number(row[name]) for name in fields}
+        for columns in (declared.get("alternatives") or {}).values():
+            for column in columns or ():
+                value = _as_number(row.get(str(column)))
+                if value is not None:
+                    truth.setdefault(str(column), value)
+        return truth, fields, required
 
     def _verdict(
-        self, field_name: str, expected: float, claimed: StatedNumber | float | None, output: Any
+        self, field_name: str, expected: tuple[float, ...], claimed: StatedNumber | float | None, output: Any
     ) -> FieldVerdict:
         # Structured figures first, always: a number handed over as data needs neither reading nor
         # judging, and is the only path that is exact, free and the same every run.
@@ -221,13 +260,13 @@ class SqlReference:
         if structured is not None:
             return self._compare(field_name, expected, structured, abbreviated=False, note=None)
         if claimed is None:
-            return FieldVerdict(expected=expected, claimed=None, matched=None)
+            return FieldVerdict(expected=expected[0], claimed=None, matched=None)
         if isinstance(claimed, StatedNumber):
             value, note = self._read(field_name, claimed)
             return self._compare(field_name, expected, value, abbreviated=claimed.abbreviated, note=note)
         # A plain number, from a reader that judged rather than parsed. It knows nothing about how
         # the figure was written, so the one rescue left is an obvious percent-for-fraction.
-        if field_name in self.fraction_fields and abs(claimed) > abs(expected) * 50:
+        if field_name in self.fraction_fields and abs(claimed) > abs(expected[0]) * 50:
             return self._compare(
                 field_name, expected, claimed / 100, abbreviated=False,
                 note="the answer wrote a percentage and the table stores a fraction",
@@ -244,16 +283,27 @@ class SqlReference:
         return stated.value, None
 
     def _compare(
-        self, field_name: str, expected: float, claimed: float, *, abbreviated: bool, note: str | None
+        self, field_name: str, expected: tuple[float, ...], claimed: float, *, abbreviated: bool, note: str | None
     ) -> FieldVerdict:
+        """The verdict for one figure, against every value the field accepts.
+
+        A match against any accepted value is a match, and the verdict names the one it matched so a
+        reader can see which column the answer gave. With nothing matched the verdict reports the
+        field's own column, because that is the figure the case asked about and a difference from an
+        alternative nobody chose would not help anyone.
+        """
+
         tolerance = self.tolerances.get(field_name, self.default_tolerance)
         widen = abbreviated and tolerance.kind == "relative"
-        matched = tolerance.matches(claimed, expected, abbreviated=widen)
+        for candidate in expected:
+            if tolerance.matches(claimed, candidate, abbreviated=widen):
+                return FieldVerdict(expected=candidate, claimed=claimed, matched=True, difference=None, note=note)
+        primary = expected[0]
         return FieldVerdict(
-            expected=expected,
+            expected=primary,
             claimed=claimed,
-            matched=matched,
-            difference=None if matched else claimed - expected,
+            matched=False,
+            difference=claimed - primary,
             note=note,
         )
 

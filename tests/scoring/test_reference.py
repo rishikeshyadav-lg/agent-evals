@@ -267,3 +267,52 @@ def test_structured_figures_still_win_over_a_claim_reader() -> None:
     output = PredictionResult(answer="anything", extra={"figures": dict(TRUTH)})
 
     assert asyncio.run(scorer(_case(), output)).scores["figures"] == pytest.approx(1.0)
+
+
+def test_a_field_may_accept_either_of_two_columns() -> None:
+    """A reviewed rubric asks for "a reach figure: device_reach ~203,646 or ip_reach ~178,540
+    (either is acceptable)". Both answer the question, so the agent is not wrong for picking one."""
+
+    async def execute(sql: str, parameters: dict) -> list[dict]:
+        return [{"reach": 203_646.0, "ip_reach": 178_540.0}]
+
+    scorer = SqlReference(execute=execute, claims_of=lambda answer, fields, truth: {"reach": 178_540.0})
+    case = EvaluationCase("q", {}, expected={"reference": {
+        "sql": "SELECT ...", "fields": {"reach": "reach"},
+        "alternatives": {"reach": ["ip_reach"]}, "required": ["reach"]}})
+
+    result = asyncio.run(scorer(case, PredictionResult(answer="reach was 178,540")))
+
+    assert result.scores["figures"] == pytest.approx(1.0)
+    assert result.details["figures.measured"]["fields"]["reach"]["expected"] == pytest.approx(178_540.0)
+
+
+def test_a_figure_matching_no_accepted_value_is_reported_against_the_field_itself() -> None:
+    """A difference from an alternative nobody chose would not help anyone read the failure."""
+
+    async def execute(sql: str, parameters: dict) -> list[dict]:
+        return [{"reach": 203_646.0, "ip_reach": 178_540.0}]
+
+    scorer = SqlReference(execute=execute, claims_of=lambda answer, fields, truth: {"reach": 1.0})
+    case = EvaluationCase("q", {}, expected={"reference": {
+        "sql": "SELECT ...", "fields": {"reach": "reach"},
+        "alternatives": {"reach": ["ip_reach"]}, "required": ["reach"]}})
+
+    result = asyncio.run(scorer(case, PredictionResult(answer="reach was 1")))
+
+    assert result.scores["figures"] == pytest.approx(0.0)
+    assert result.details["figures"]["disagreed"]["reach"]["expected"] == pytest.approx(203_646.0)
+
+
+def test_an_alternative_column_the_query_did_not_select_is_ignored() -> None:
+    """An acceptable value nobody selected is not a value."""
+
+    async def execute(sql: str, parameters: dict) -> list[dict]:
+        return [{"reach": 203_646.0}]
+
+    scorer = SqlReference(execute=execute, claims_of=lambda answer, fields, truth: {"reach": 203_646.0})
+    case = EvaluationCase("q", {}, expected={"reference": {
+        "sql": "SELECT ...", "fields": {"reach": "reach"},
+        "alternatives": {"reach": ["ip_reach"]}, "required": ["reach"]}})
+
+    assert asyncio.run(scorer(case, PredictionResult(answer="203,646"))).scores["figures"] == pytest.approx(1.0)

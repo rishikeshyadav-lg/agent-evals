@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.17.0 — 2026-10-08
+
+A field may accept either of two columns.
+
+### Added
+- `alternatives: {field: [other_column, ...]}` in a case's reference block. A match against any
+  accepted value is a match, and the verdict names the one it matched so a reader can see which
+  column the answer gave.
+
+A reviewed rubric for one agent's real traffic asks for "a reach figure: device_reach ~203,646 or
+ip_reach ~178,540 (either is acceptable)". Both are honest answers to "what was the reach", and the
+agent is not wrong for picking one — but comparing against a single column failed whichever it did
+not pick. 26 of 235 reviewed metric requirements are of this shape.
+
+### Notes
+- Alternative columns must be in the query's own result; an acceptable value nobody selected is not
+  a value. They ride along in the truth row because that is the only place the full result is still
+  in scope.
+- With nothing matched the verdict reports the field's own column, not the nearest alternative: a
+  difference from a column the answer never used would not help anyone read the failure.
+
 ## 0.16.0 — 2026-10-08
 
 Questions whose correct answer is "that cannot be answered from this data".
