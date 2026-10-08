@@ -130,20 +130,36 @@ async def _scores_for(runner: Callable[..., Any]) -> dict[str, float | None]:
     }
 
 
-def check_adapters_stay_lazy() -> list[str]:
-    """Import the database layer in a fresh interpreter and report any adapter it pulled in.
+# package, the modules that always load with it, and how to say it in a report.
+LAZY_REGISTRIES = (
+    (
+        "agent_evals.sql",
+        ("executor", "registry"),
+        "the database layer loads no adapter until one is asked for by name",
+    ),
+    (
+        "agent_evals.mining",
+        ("source", "reading", "registry", "dataset"),
+        "the mining layer loads no trace source until one is asked for by name",
+    ),
+)
 
-    Each adapter imports its driver at the top of its own module, which is the readable way to write
-    it and is safe only while nothing imports an adapter you did not ask for. This is the check that
-    keeps that true as adapters are added.
+
+def check_registry_stays_lazy(package: str, always_loaded: tuple[str, ...]) -> list[str]:
+    """Import one registry in a fresh interpreter and report any plugin it pulled in.
+
+    Each plugin imports its client at the top of its own module, which is the readable way to write
+    it and is safe only while nothing imports a plugin you did not ask for. This is the check that
+    keeps that true as plugins are added, and it covers every registry rather than the first one.
     """
 
     program = textwrap.dedent(
-        """
+        f"""
         import sys
-        import agent_evals.sql  # noqa: F401
-        loaded = sorted(name for name in sys.modules if name.startswith("agent_evals.sql."))
-        print(",".join(name for name in loaded if name.rsplit(".", 1)[-1] not in ("executor", "registry")))
+        import {package}  # noqa: F401
+        loaded = sorted(name for name in sys.modules if name.startswith("{package}."))
+        skip = {always_loaded!r}
+        print(",".join(name for name in loaded if name.rsplit(".", 1)[-1] not in skip))
         """
     )
     result = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True, check=True)
@@ -185,11 +201,13 @@ async def main(argv: Sequence[str] | None = None) -> int:
     else:
         print(f"ok: importing agent_evals loads none of {', '.join(FORBIDDEN_MODULES)}")
 
-    eager = check_adapters_stay_lazy()
-    if eager:
-        print(f"FAILED: importing agent_evals.sql loaded {', '.join(eager)}")
-    else:
-        print("ok: the database layer loads no adapter until one is asked for by name")
+    # Every registry, not just the first one: a second was added and the check had to grow with it.
+    for package, always, description in LAZY_REGISTRIES:
+        eager = check_registry_stays_lazy(package, always)
+        if eager:
+            print(f"FAILED: importing {package} loaded {', '.join(eager)}")
+        else:
+            print(f"ok: {description}")
 
     scores = await check_every_agent_shape_scores_the_same()
     disagreements = _disagreements(scores)

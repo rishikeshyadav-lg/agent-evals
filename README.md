@@ -22,7 +22,7 @@ Works with any agent in any framework — you hand it a function. No required de
 ## Install
 
 ```bash
-pip install "git+https://github.com/rishikeshyadav-lg/agent-evals@v0.3.0"
+pip install "git+https://github.com/rishikeshyadav-lg/agent-evals@v0.4.0"
 ```
 
 Not on PyPI yet, so install from the tag. Pin that tag if you are comparing scores over time: the
@@ -232,4 +232,4 @@ and `mlflow` for one reporting test.
 
 Run one with `python examples/<name>/flow.py` from a clone. Needs Python 3.11 or newer.
 
-Version `0.3.0`, extracted from the `penguiflow` monorepo, which keeps the full history.
+Version `0.4.0`, extracted from the `penguiflow` monorepo, which keeps the full history.

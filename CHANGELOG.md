@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 — 2026-10-08
+
+`agent-evals mine`: the questions people actually asked, as a dataset you can run twice.
+
+### Added
+- `agent_evals.mining`: a `TraceSource` seam shaped like the database one. Reading a trace and
+  finding the question inside needs to know that agent's format, so the knowledge stays with you.
+- `open_source("mlflow", ...)` with a lazy registry, and `question_of` for the one part only you
+  can answer. The default reader handles the common request shapes and returns nothing rather than
+  a guess when it does not recognise one.
+- `build_dataset` collapses duplicates, fixes the order and derives each id from the question, so
+  mining the same window twice gives the same checksum.
+- `agent-evals mine` asks how far back to look (90, 120 or 180 days) and writes the dataset under
+  the log directory, which git is already refusing to commit.
+- The selfcheck now proves both registries stay lazy, not just the first.
+
 ## 0.3.0 — 2026-10-08
 
 The beginning of a command-line tool you install at your agent's root. Two commands so far.

@@ -62,12 +62,12 @@ def test_the_database_layer_loads_no_adapter_until_one_is_named() -> None:
     """Each adapter imports its driver at module top, which is safe only while nothing imports one
     you did not ask for. Checked in a fresh interpreter, so another test's import cannot mask it."""
 
-    assert selfcheck.check_adapters_stay_lazy() == []
+    assert selfcheck.check_registry_stays_lazy("agent_evals.sql", ("executor", "registry")) == []
 
 
 def test_the_check_fails_when_an_adapter_is_eager(monkeypatch) -> None:
     """The error path: a driver imported at the wrong level must make the run exit non-zero."""
 
-    monkeypatch.setattr(selfcheck, "check_adapters_stay_lazy", lambda: ["agent_evals.sql.sqlite"])
+    monkeypatch.setattr(selfcheck, "check_registry_stays_lazy", lambda *_: ["agent_evals.sql.sqlite"])
 
     assert asyncio.run(selfcheck.main()) == 1

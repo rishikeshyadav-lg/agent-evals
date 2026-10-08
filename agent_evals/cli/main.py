@@ -10,8 +10,11 @@ so this reads the same environment and says which variable is missing when it ca
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 try:
     import typer
@@ -105,6 +108,111 @@ def doctor(root: Path = typer.Option(Path("."), help="the agent's root directory
     if any(level == "fail" for level, _ in findings):
         raise typer.Exit(1)
     typer.echo("ready" + (" (with warnings)" if any(level == "warn" for level, _ in findings) else ""))
+
+
+@app.command()
+def mine(
+    root: Path = typer.Option(Path("."), help="the agent's root directory"),
+    days: int = typer.Option(0, help="how far back to look; you are asked if omitted"),
+    limit: int = typer.Option(150, help="at most this many traces"),
+    version: str = typer.Option("v1", help="the dataset version to write"),
+) -> None:
+    """Pull the questions people actually asked, and write them as a frozen dataset."""
+
+    from ..mining import MinedQuestion, TraceQuery, build_dataset, build_manifest, open_source
+    from ..mining.source import SourceNotInstalled
+    from .telemetry import span
+
+    settings = _loaded(root)
+    traces = dict(settings.traces)
+    source_name = str(traces.pop("source", "mlflow"))
+    if not traces:
+        typer.echo(f"nothing in [traces] of {configuration.FILENAME} says where to read them from.")
+        raise typer.Exit(1)
+
+    window = days or _chosen_window()
+    logs = _prepared_logs(root, settings)
+
+    try:
+        source = open_source(source_name, traces)
+    except (KeyError, SourceNotInstalled) as error:
+        typer.echo(str(error))
+        raise typer.Exit(1) from error
+
+    async def read() -> list[MinedQuestion]:
+        return await source(TraceQuery(since_days=window, limit=limit))
+
+    with span("mine", source=source_name, since_days=window, limit=limit):
+        questions = asyncio.run(read())
+
+    if not questions:
+        typer.echo(f"no questions found in the last {window} days. Widen the window or check [traces].")
+        raise typer.Exit(1)
+
+    dataset = build_dataset(questions, dataset_id=settings.agent, version=version)
+    manifest = build_manifest(dataset)
+    written = _write_dataset(logs, dataset, manifest)
+
+    typer.echo(f"{len(questions)} traces read, {len(dataset.cases)} distinct questions")
+    typer.echo(f"checksum {manifest.digest}")
+    typer.echo(f"wrote    {written}")
+    typer.echo("next: agent-evals draft")
+
+
+WINDOWS = (90, 120, 180)
+
+
+def _chosen_window() -> int:
+    """Ask how far back to look. The three offered are the ones people actually pick."""
+
+    typer.echo("How far back should it look?")
+    for index, days in enumerate(WINDOWS, start=1):
+        typer.echo(f"  {index}) {days} days")
+    choice = typer.prompt("choose", default="1")
+    try:
+        return WINDOWS[int(choice) - 1]
+    except (ValueError, IndexError):
+        return int(choice)
+
+
+def _loaded(root: Path) -> configuration.Config:
+    try:
+        return configuration.load(root.resolve())
+    except configuration.ConfigError as error:
+        typer.echo(str(error))
+        raise typer.Exit(1) from error
+
+
+def _prepared_logs(root: Path, settings: configuration.Config) -> Path:
+    """The log directory, refusing to continue if git would commit what goes in it."""
+
+    try:
+        return logging_directory.prepare(root.resolve(), settings.logs).path
+    except logging_directory.LogsNotIgnored as error:
+        typer.echo(str(error))
+        raise typer.Exit(2) from error
+
+
+def _write_dataset(logs: Path, dataset: Any, manifest: Any) -> Path:
+    """Dataset and manifest as JSON, under the log directory because they hold customer questions."""
+
+    path = logs / f"dataset-{dataset.version}.json"
+    path.write_text(
+        json.dumps(
+            {
+                "dataset_id": dataset.dataset_id,
+                "version": dataset.version,
+                "digest": manifest.digest,
+                "cases": [
+                    {"case_id": case.case_id, "inputs": dict(case.inputs), "source_trace_id": case.source_trace_id}
+                    for case in dataset.cases
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    return path
 
 
 def _telemetry_finding() -> tuple[str, str]:
