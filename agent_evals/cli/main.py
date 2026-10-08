@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any
@@ -37,19 +38,44 @@ CREDENTIAL_VARIABLES = {
 @app.command()
 def init(
     root: Path = typer.Option(Path("."), help="the agent's root directory"),
-    agent: str = typer.Option(..., help="the deployment under test, e.g. rc1-ai-campaign-performance"),
-    database: str = typer.Option("sqlite", help="which adapter reaches your tables"),
-    table: str = typer.Option("", help="the table holding the figures to check against"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="accept every detected default without asking"),
+    agent: str = typer.Option("", help="name the deployment yourself, when detection finds none"),
 ) -> None:
-    """Write agent-evals.toml and make the log directory safe to write into."""
+    """Set up this project by reading what it already records, asking only what cannot be found."""
+
+    from .detect import detect, host_for_profile
+    from .scaffold import write_drafter
 
     root = root.resolve()
-    existing = configuration.path_in(root)
-    if existing.exists():
-        typer.echo(f"{existing} already exists; edit it rather than re-running init.")
+    if configuration.path_in(root).exists():
+        typer.echo(f"{configuration.FILENAME} already exists; edit it rather than re-running init.")
         raise typer.Exit(1)
 
-    settings = configuration.Config(agent=agent, database=database, table=table)
+    typer.echo("Looking around…")
+    found = detect(root)
+    _report(found)
+
+    deployment = _pick_deployment(found.deployments, yes)
+    profile = _pick(found.profiles, "Authenticate with", yes)
+    table = deployment.get("table") if deployment else found.shared.get("table", "")
+
+    name = agent or (deployment.name if deployment else "")
+    if not name:
+        # Never prompt under --yes, and never hang in a script. Say what to pass instead.
+        if yes or not _interactive():
+            typer.echo("no deployment found in this project. Name one with --agent <name>.")
+            raise typer.Exit(1)
+        name = typer.prompt("Which deployment are you evaluating?")
+
+    settings = configuration.Config(
+        agent=name,
+        database="databricks" if deployment and deployment.get("warehouse_id") else "sqlite",
+        database_settings=_database_settings(deployment, profile),
+        table=table,
+        drafter="eval_drafter:DRAFTER",
+        traces=_trace_settings(deployment),
+    )
+
     try:
         location = logging_directory.prepare(root, settings.logs)
     except logging_directory.LogsNotIgnored as error:
@@ -57,9 +83,76 @@ def init(
         raise typer.Exit(2) from error
 
     written = configuration.save(root, settings)
-    typer.echo(f"wrote {written}")
-    typer.echo(f"logs  {location.path}  (ignored by git: {location.ignored})")
-    typer.echo("next: agent-evals doctor")
+    drafter_path = write_drafter(root, table)
+
+    typer.echo("")
+    typer.echo(f"  created  {written.name}")
+    typer.echo(f"  created  {drafter_path.name}" if drafter_path else "  skipped  drafter (no table detected)")
+    typer.echo(f"  ignored  {location.path.name}/  (added to .gitignore)")
+    if profile:
+        typer.echo(f"  auth     profile {profile} -> {host_for_profile(profile) or 'no host recorded'}")
+    typer.echo("")
+    typer.echo("Next:  agent-evals doctor")
+
+
+def _interactive() -> bool:
+    """Whether there is someone there to answer. A script must fail, not wait."""
+
+    return sys.stdin.isatty()
+
+
+def _report(found: Any) -> None:
+    """Say what was found and where, so a wrong guess is visible before it is accepted."""
+
+    for deployment in found.deployments:
+        typer.echo(f"  found  {deployment.name:34} {len(deployment.settings)} settings in {deployment.source}")
+    if found.profiles:
+        typer.echo(f"  found  {len(found.profiles)} Databricks profile(s): {', '.join(found.profiles)}")
+    if not found.deployments and not found.profiles:
+        typer.echo("  found  nothing to go on; you will be asked for everything")
+
+
+def _pick_deployment(deployments: Any, yes: bool) -> Any:
+    if not deployments:
+        return None
+    names = [d.name for d in deployments]
+    chosen = _pick(names, "Which deployment are you evaluating", yes)
+    return next(d for d in deployments if d.name == chosen)
+
+
+def _pick(options: Any, question: str, yes: bool) -> str:
+    """One choice from what was found. The first is the default, so Enter is always an answer."""
+
+    options = list(options)
+    if not options:
+        return ""
+    if len(options) == 1 or yes:
+        return str(options[0])
+    typer.echo("")
+    for index, option in enumerate(options, start=1):
+        typer.echo(f"    {index}) {option}")
+    answer = typer.prompt(f"{question}?", default="1")
+    try:
+        return str(options[int(answer) - 1])
+    except (ValueError, IndexError):
+        return str(answer)
+
+
+def _database_settings(deployment: Any, profile: str) -> dict[str, str]:
+    """Everything the warehouse client needs, including the profile so nobody exports a host."""
+
+    if deployment is None:
+        return {}
+    settings = {key: deployment.get(key) for key in ("warehouse_id", "catalog", "schema") if deployment.get(key)}
+    if profile:
+        settings["profile"] = profile
+    return settings
+
+
+def _trace_settings(deployment: Any) -> dict[str, str]:
+    if deployment is None or not deployment.get("experiment_id"):
+        return {}
+    return {"source": "mlflow", "experiment_id": deployment.get("experiment_id")}
 
 
 @app.command()
@@ -72,12 +165,8 @@ def doctor(root: Path = typer.Option(Path("."), help="the agent's root directory
     # ignored, which costs more than it saves.
     findings: list[tuple[str, str]] = []
 
-    try:
-        settings = configuration.load(root)
-        findings.append(("ok", f"config: {configuration.FILENAME} names agent {settings.agent!r}"))
-    except configuration.ConfigError as error:
-        typer.echo(f"✗ {error}")
-        raise typer.Exit(1) from error
+    settings = _loaded(root)
+    findings.append(("ok", f"config: {configuration.FILENAME} names agent {settings.agent!r}"))
 
     location = logging_directory.inspect_location(root / settings.logs)
     findings.append(
@@ -176,12 +265,33 @@ def _chosen_window() -> int:
         return int(choice)
 
 
+def _apply_profile(settings: configuration.Config) -> None:
+    """Set the environment a Databricks client expects, from the profile init recorded.
+
+    The agent's own client reads DATABRICKS_HOST and never looks at ~/.databrickscfg, so without
+    this every command would need two exports first. The profile is already on the machine; asking
+    someone to restate it in their shell is asking them to copy their own configuration.
+    """
+
+    profile = str(settings.database_settings.get("profile") or "")
+    if not profile:
+        return
+    from .detect import host_for_profile
+
+    os.environ.setdefault("DATABRICKS_CONFIG_PROFILE", profile)
+    host = host_for_profile(profile)
+    if host:
+        os.environ.setdefault("DATABRICKS_HOST", host)
+
+
 def _loaded(root: Path) -> configuration.Config:
     try:
-        return configuration.load(root.resolve())
+        settings = configuration.load(root.resolve())
     except configuration.ConfigError as error:
         typer.echo(str(error))
         raise typer.Exit(1) from error
+    _apply_profile(settings)
+    return settings
 
 
 def _prepared_logs(root: Path, settings: configuration.Config) -> Path:
@@ -319,9 +429,12 @@ async def _ran(execute: Any, proposal: Any) -> tuple[list[dict[str, Any]], str]:
 
 
 def _executor(settings: configuration.Config) -> Any:
+    """The database client, with `profile` removed: it configures the environment, not the client."""
+
     from ..sql import open_executor
 
-    return open_executor(settings.database, dict(settings.database_settings))
+    options = {k: v for k, v in settings.database_settings.items() if k != "profile"}
+    return open_executor(settings.database, options)
 
 
 def _mined_questions(logs: Path, version: str) -> list[Any]:

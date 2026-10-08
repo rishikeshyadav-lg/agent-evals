@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0 — 2026-10-08
+
+Onboarding rewritten. `agent-evals init` now reads what your project already records.
+
+### Changed
+- `init` detects instead of asking. Every value it previously wanted typed — the deployment, the
+  table, the warehouse, the catalog, the schema, the MLflow experiment — was already written in the
+  project's own deploy manifests, and the credentials were already in `~/.databrickscfg`. It reads
+  them, shows what it found and where, and you pick.
+- Settings are grouped per deployment, so one choice settles all of them. Pooling them handed you
+  dev's experiment beside prd's table.
+- The profile goes in the config, and every command sets `DATABRICKS_HOST` from it. **No exports.**
+- `init` scaffolds `eval_drafter.py` filled in with your table, and it runs as written.
+- `--yes` accepts every default, `--agent` names a deployment when nothing is detected, and neither
+  ever waits for an answer a script cannot give.
+
+### Notes
+- Detection is shallow on purpose — key names and file shapes, no product-specific schema. A
+  detector that is clever about one project is wrong about the next, so nothing is applied silently.
+
 ## 0.5.0 — 2026-10-08
 
 `agent-evals draft` and `review`: a query per question, and the gate it has to pass.
