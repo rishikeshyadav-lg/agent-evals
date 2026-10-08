@@ -40,7 +40,9 @@ FORBIDDEN_MODULES = (
     "litellm",
     "mlflow",
     "openai",
+    "opentelemetry",
     "penguiflow",
+    "typer",
 )
 
 # Measured wall-clock time and spend differ between identical runs, so they are reported but not compared.

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 — 2026-10-08
+
+The beginning of a command-line tool you install at your agent's root. Two commands so far.
+
+### Added
+- `agent-evals init` writes `agent-evals.toml` and prepares a log directory git will not commit.
+- `agent-evals doctor` answers "will a run work from here", naming what is missing. It separates a
+  fault from a limitation: no table configured is a warning, not a failure.
+- OpenTelemetry spans for everything the tool does, written as JSON lines under the log directory,
+  and exported to a collector when `otlp_endpoint` is set.
+- `pip install "agent-evals[cli]"` installs the command and its dependencies. The library itself
+  stays dependency-free, and the selfcheck now proves it by forbidding `typer` and `opentelemetry`
+  alongside the agent frameworks.
+
+### Notes
+- Credentials are never prompted for or stored. The tool reads the environment the agent already
+  uses and says which variable is missing when it cannot.
+- Logs hold the questions users asked. They live at the agent's root by request, so the tool writes
+  two layers of `.gitignore` and refuses to write at all if git says the directory is not ignored.
+
 ## 0.2.1 — 2026-10-07
 
 ### Fixed
