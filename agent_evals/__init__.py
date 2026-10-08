@@ -80,9 +80,10 @@ from .running.shadow import (
 )
 from .running.suites import SuiteRule, SuiteVerdict, case_scores, run_suite, suite_verdict
 from .scoring.answer import SUGGESTED_CRITERIA, AnswerRubric, suggested_rubric
+from .scoring.breakdown import SqlBreakdown
 from .scoring.claims import StatedNumber, numbers_by_label, numbers_in_text
 from .scoring.completeness import Completeness, OmissionCheck
-from .scoring.figure_judge import JudgeClaims
+from .scoring.figure_judge import JudgeClaims, JudgeRows
 from .scoring.golden import (
     GoldenApproval,
     GoldenRefreshError,
@@ -284,6 +285,7 @@ __all__ = [
     "JsonlRowSink",
     "ClaimReader",
     "JudgeClaims",
+    "JudgeRows",
     "JudgeClient",
     "JudgeScorer",
     "JudgeVerdict",
@@ -347,6 +349,7 @@ __all__ = [
     "StatedNumber",
     "numbers_by_label",
     "numbers_in_text",
+    "SqlBreakdown",
     "SqlReference",
     "FieldVerdict",
     "reference_criteria",

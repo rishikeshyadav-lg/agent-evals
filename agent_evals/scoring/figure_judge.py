@@ -102,4 +102,76 @@ def _decoded(reply: str) -> Mapping[str, Any] | None:
     return decoded if isinstance(decoded, Mapping) else None
 
 
-__all__ = ["PROMPT", "JudgeClaims"]
+
+
+
+ROWS_PROMPT = """You are checking whether an analyst's report states particular rows correctly.
+
+Their answer:
+---
+{answer}
+---
+
+Below is one row per {dimension}, with the true values from the source table. For each one, report
+the figures the answer gives for that {dimension}. Match a row by its {dimension} label, not by its
+position. If the answer does not break the data down by that {dimension} at all, or omits that
+particular one, leave it out of your reply entirely.
+
+{expected}
+
+Reply with only JSON: {{"<label>": {{"<metric id>": <the number the answer gives for it, or null>}},
+...}} with one entry per {dimension} the answer actually states."""
+
+
+@dataclass(frozen=True, slots=True)
+class JudgeRows:
+    """Reads what an answer stated for each key of a breakdown, by asking a model.
+
+    Pass it to `SqlBreakdown(read_rows=...)`. There is no proximity-based alternative on purpose: a
+    breakdown multiplies the failure that made distance-based reading unusable on one row, because a
+    metric's name appears once per row and the figure nearest it belongs to whichever row the model
+    laid out closest.
+    """
+
+    client: JudgeClient
+    dimension: str = "row"
+    name: str = "row_judge"
+
+    async def __call__(
+        self,
+        answer: str,
+        fields: Mapping[str, str],
+        truth: Mapping[str, Mapping[str, float]],
+    ) -> Mapping[str, Mapping[str, float | None]]:
+        if not answer.strip() or not truth:
+            return {}
+        expected = "\n".join(
+            f"- {key}: " + ", ".join(f"{name} (metric id {name}) {values.get(name)}" for name in fields)
+            for key, values in truth.items()
+        )
+        prompt = ROWS_PROMPT.format(answer=answer, dimension=self.dimension, expected=expected)
+        try:
+            reply = await _await_value(self.client(prompt))
+        except Exception:  # noqa: BLE001 -- an unreachable judge read nothing, and the caller says so
+            logger.info("The row judge raised", exc_info=True)
+            raise
+
+        decoded = _decoded(str(reply))
+        if decoded is None:
+            raise ValueError("the row judge's reply could not be read as JSON")
+        stated: dict[str, Mapping[str, float | None]] = {}
+        for key in truth:
+            entry = decoded.get(key)
+            if not isinstance(entry, Mapping):
+                continue
+            row: dict[str, float | None] = {}
+            for name in fields:
+                value = entry.get(name)
+                row[name] = float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+            # A key the judge answered with no readable figure at all is a key it did not state.
+            if any(value is not None for value in row.values()):
+                stated[key] = row
+        return stated
+
+
+__all__ = ["PROMPT", "ROWS_PROMPT", "JudgeClaims", "JudgeRows"]

@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.15.0 — 2026-10-08
+
+Questions that ask for a table can now be scored.
+
+### Added
+- `SqlBreakdown`: scores an answer against a reference query returning one row per key — a week, a
+  placement, a creative. Two scores, because they fail differently and need different fixes.
+  `breakdown.rows` is how many of the keys the answer stated at all; `breakdown.figures` is, of the
+  rows it stated, how many carried the right numbers. An answer covering every week with wrong
+  figures and one covering half the weeks correctly are both wrong, and not in the same way.
+- `JudgeRows`, the row reader. No proximity-based alternative exists on purpose: a breakdown
+  multiplies the failure that made distance-based reading unusable on a single row, because a
+  metric's name appears once per row and the nearest figure belongs to whichever row is laid out
+  closest.
+- `extra["rows"]` is preferred over reading the answer, exactly as `extra["figures"]` is.
+
+### Why this was needed
+Of 64 checkable questions mined from one agent's 90 days of production traffic, 30 asked for a
+weekly trend, 15 for a per-placement split and 7 for a per-creative one. None could be scored:
+`verify` refuses a query returning five rows, correctly, because which row is "the" answer is not
+for a tool to guess. A scalar check could see about a third of real questions.
+
+### Verified against production
+One real answer's five-week table, against the warehouse's five rows for that campaign:
+`breakdown.rows 1.000`, `breakdown.figures 1.000` — 15 of 15 figures, no missing weeks, no invented
+ones.
+
+### Notes
+- A case declaring no breakdown returns `None` rather than zero, so a suite can mix questions that
+  ask for one with questions that do not.
+- A reader that fails leaves the case unmeasured; an answer that gave no breakdown at all scores
+  zero on `rows`, because that is a verdict about the answer rather than a failure to measure.
+
 ## 0.14.0 — 2026-10-08
 
 A judge can now be reached by name, and one read the real agent's figures.
