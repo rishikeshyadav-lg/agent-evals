@@ -21,7 +21,7 @@ from ..core.datasets import DatasetManifest
 from ..running.execution import RepeatedRun
 from ..running.suites import SuiteRule, SuiteVerdict, case_scores, suite_verdict
 from ..scoring.judging import AgreementReport
-from ..scoring.operational import OperationalSummary, operational_summary
+from ..scoring.operational import OperationalSummary, PercentileEstimate, operational_summary
 from ..scoring.policy import policy_flag
 from ..scoring.trajectory import selection_gap
 from ..stats.profiles import ProfileVerdict
@@ -365,6 +365,8 @@ def report_json(report: Report) -> dict[str, Any]:
             "failures": [asdict(failure) for failure in report.scorecard.failures],
         },
         "operational": {
+            "latency_ms": _percentiles(report.operational.latency_ms),
+            "cost_usd": _percentiles(report.operational.cost_usd),
             "runs": report.operational.runs,
             "failed_runs": report.operational.failed_runs,
             "mean_cost_per_task_usd": report.operational.mean_cost_per_task_usd,
@@ -380,6 +382,27 @@ def report_json(report: Report) -> dict[str, Any]:
             }
             for verdict in report.profiles
         ],
+    }
+
+
+def _percentiles(estimates: Mapping[str, PercentileEstimate] | None) -> dict[str, dict[str, float]] | None:
+    """Every percentile the operational summary measured, which the scorecard shows only p95 of.
+
+    In the operational block rather than as scorecard entries on purpose: `selfcheck` compares
+    scorecard shapes across three agents and excludes only `p95_latency` and `cost_per_task` from
+    that comparison, so a `p50_latency` entry would make the selfcheck fail on measured wall-clock.
+    """
+
+    if not estimates:
+        return None
+    return {
+        name: {
+            "estimate": estimate.estimate,
+            "lower": estimate.lower,
+            "upper": estimate.upper,
+            "sample_size": float(estimate.sample_size),
+        }
+        for name, estimate in estimates.items()
     }
 
 

@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.18.0 — 2026-10-08
+
+Why a run went wrong, where its time went, and where its money went.
+
+### Added
+- `agent_evals.attribution`: one dominant cause per bad run, over a 15-code precedence that is
+  **causal, not severity-ranked** — a cause sits above every cause it can produce. Wrong scope
+  outranks wrong figures because right numbers about the wrong campaign are wrong numbers.
+- `RunFacts`, built from a recorded `RunRow` or a live result, so a cause is decided identically
+  whether watched live or read back a week later.
+- `usage_attribution` / `usage_summary`: the LLM share of wall-clock, call count, input tokens and
+  per-`client_role` split. On one deployment 85% of wall-clock was LLM time and $0.651/run came
+  almost entirely from 203,190 input tokens — a latency number nobody can split says to be faster,
+  not what to make faster.
+- `cause_report` / `failure_code_report`: counts per code across a run, ranked, with the cases named.
+- `agent_evals.reporting.segments`: per-category scorecards by slicing the run and reusing
+  `build_scorecard` and `operational_summary`, never reimplementing them.
+- `RunRow.steps_recorded`, and p50/p99 of latency and cost in `report_json`'s operational block.
+
+### Four rules that shape it
+- **Never assert a cause from absence.** `_tool_calls` returns `[]` both for a run with no steps and
+  one with no trajectory, so `no_tool_calls` fires only on `steps_recorded`; otherwise the honest
+  answer is unknown.
+- **Empty result is not fabrication.** An agent correctly reporting no data has the same empty tool
+  result. The stronger code needs the stronger evidence: `SqlReference` emits a `figures` score only
+  when the answer stated one, so the metric's presence is the proof.
+- **A measurement gap never acquits the agent.** `measurement_unavailable` yields whenever any
+  measured criterion is below its bar, and the unmeasured map travels on the attribution regardless.
+- **A bad run nothing explains is unattributable with a reason**, never "no cause" — that would read
+  as a clean bill of health for the case that most needs one.
+
+### Notes
+- p50/p99 go in the operational block, not as scorecard entries: `selfcheck.MEASURED_NOT_DERIVED`
+  excludes only `p95_latency` and `cost_per_task` from its cross-agent shape comparison, so a
+  `p50_latency` entry would make the selfcheck fail on measured wall-clock.
+- `attribution` imports only `core` and `running`, and `reporting/report.py` does not import it, so
+  a report cannot start depending on a diagnosis.
+
 ## 0.17.0 — 2026-10-08
 
 A field may accept either of two columns.

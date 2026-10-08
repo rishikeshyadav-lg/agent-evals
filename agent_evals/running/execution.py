@@ -67,6 +67,11 @@ class RunRow:
     pattern_key: str | None = None
     set_name: str | None = None
     native_trace_id: str | None = None
+    # Whether the runner returned a trajectory at all. `_tool_calls` yields an empty list both for a
+    # run that called no tools and for a run that recorded none, and those have different causes and
+    # different fixes. None on a row written before this key existed: unknown, which is the honest
+    # reading and not "no tools".
+    steps_recorded: bool | None = None
 
     @property
     def key(self) -> RowKey:
@@ -94,6 +99,7 @@ class RunRow:
             "repeat": self.repeat,
             "score_details": {name: dict(detail) for name, detail in self.result.score_details.items()},
             "set": self.set_name,
+            "steps_recorded": self.steps_recorded,
             "tool_calls": [dict(call) for call in self.tool_calls],
             "variant_id": self.variant_id,
         }
@@ -123,6 +129,7 @@ class RunRow:
             pattern_key=record["pattern_key"],
             set_name=record["set"],
             native_trace_id=record["native_trace_id"],
+            steps_recorded=record.get("steps_recorded"),
         )
 
 
@@ -234,6 +241,7 @@ def _row(case: EvaluationCase, variant: EvaluationVariant, repeat: int, result: 
         pattern_key=_text(case.inputs.get("pattern_key")),
         set_name=_text(case.inputs.get("set")),
         native_trace_id=_text(extra.get("native_trace_id")) or case.source_trace_id,
+        steps_recorded=output.trajectory is not None if isinstance(output, PredictionResult) else None,
     )
 
 

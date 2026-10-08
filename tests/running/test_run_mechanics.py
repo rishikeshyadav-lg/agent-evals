@@ -32,6 +32,7 @@ ROW_KEYS = {
     "pattern_key",
     "repeat",
     "set",
+    "steps_recorded",
     "tool_calls",
 }
 

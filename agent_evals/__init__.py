@@ -4,6 +4,10 @@ Nothing in this package imports an agent framework. An agent takes part by suppl
 callable; scoring, comparison and statistics work on what that callable returns.
 """
 
+from .attribution.aggregate import CauseReport, FailureCodeReport, cause_report, failure_code_report
+from .attribution.causes import Attribution, Cause, attribute, attribute_run
+from .attribution.facts import RunFacts, facts_of_result, facts_of_row
+from .attribution.usage import UsageAttribution, UsageSummary, usage_attribution, usage_summary
 from .core.datasets import (
     DatasetManifest,
     MetricMismatchError,
@@ -69,6 +73,7 @@ from .reporting.report import (
     report_json,
     report_markdown,
 )
+from .reporting.segments import Segment, segment_run, segmented_scorecards, unlabelled_rows
 from .running.comparison import CaseResult, ComparisonRequest, ComparisonResult
 from .running.execution import JsonlRowSink, RepeatedRun, RowKey, RunRow, RunSettings, TransientError, run_repeated
 from .running.runner import ComparisonRunner, Scorers, run_case_variant, run_cases, run_comparison
@@ -236,6 +241,25 @@ from .stats.statistics import (
 from .stats.thresholds import PromotionThresholds, thresholds_version, values_digest
 
 __all__ = [
+    "usage_summary",
+    "usage_attribution",
+    "unlabelled_rows",
+    "segmented_scorecards",
+    "segment_run",
+    "failure_code_report",
+    "facts_of_row",
+    "facts_of_result",
+    "cause_report",
+    "attribute_run",
+    "attribute",
+    "UsageSummary",
+    "UsageAttribution",
+    "Segment",
+    "RunFacts",
+    "FailureCodeReport",
+    "CauseReport",
+    "Cause",
+    "Attribution",
     "AgreementReport",
     "AllowedTools",
     "ArgumentChange",
