@@ -197,40 +197,44 @@ and the same agent written three ways scores identically. Exits non-zero on fail
 ## Repo layout
 
 ```
-agent_evals/      the package: six folders, plus __init__.py, selfcheck.py and py.typed
-tests/            479 tests, mirroring the package folders, plus contract/
+agent_evals/      the package: eleven folders, plus __init__.py, selfcheck.py and py.typed
+tests/            718 tests, mirroring the package folders, plus contract/
 examples/         three runnable examples
-pyproject.toml    zero dependencies; mlflow is the one optional extra
+pyproject.toml    zero required dependencies; mlflow, databricks and cli are optional extras
 CHANGELOG.md      version history and known limits
 ```
 
-No `src/` layout, no `docs/`, no CI config. Everything is re-exported, so
-`from agent_evals import ExactMatch` works regardless of which folder a name lives in, so you never need
-to import these paths directly.
+No `src/` layout, no CI config. Everything is re-exported, so `from agent_evals import ExactMatch` works regardless
+of which folder a name lives in, so you never need to import these paths directly. `docs/archive/` holds superseded
+documents kept for history; nothing in it is current instruction.
 
-### The package, 32 modules
+### The package, 63 modules
 
 | Folder | Modules | Notes |
 |---|---|---|
 | `core/` | `evaluation`, `datasets`, `prediction`, `steps`, `evidence`, `splits` | The shapes everything else speaks in. Cases, datasets and variants live in **`evaluation`**, not `datasets`. |
 | `running/` | `runner`, `execution`, `suites`, `comparison`, `shadow` | Repeats, concurrency, the two suite kinds, comparing variants, shadow runs against recorded inputs. |
-| `scoring/` | `outcome`, `trajectory`, `operational`, `policy`, `golden`, `judging`, `llm_judge`, `answer`, `claims`, `reference` | One module per layer, in the order above: answer, steps, speed and cost, rules. `llm_judge` holds the two experimental scorers. |
+| `scoring/` | `outcome`, `trajectory`, `operational`, `policy`, `golden`, `judging`, `llm_judge`, `answer`, `breakdown`, `claims`, `completeness`, `data_gap`, `figure_judge`, `interpretation`, `reference`, `refusal`, `scope` | One module per layer first: answer, steps, speed and cost, rules. The rest are answer-level scorers; `llm_judge` holds the experimental ones. |
+| `judges/` | `registry`, `databricks` | Opening a judge by name, so a caller never imports a provider directly. |
+| `attribution/` | `facts`, `causes`, `aggregate`, `usage` | Why a run failed, rolled up across runs. |
+| `mining/` | `source`, `mlflow_source`, `dataset`, `reading`, `registry` | Turning recorded traffic into cases. |
+| `drafting/` | `drafter`, `review`, `store` | Drafting and reviewing candidate cases. |
+| `sql/` | `executor`, `registry`, `sqlite`, `databricks` | What a database has to offer: run a statement, return rows. The registry loads no adapter until one is asked for by name. |
 | `stats/` | `statistics`, `calibration`, `repeatability`, `thresholds`, `profiles` | Paired bootstrap intervals, run-to-run noise, pass@k, and the bars a promotion gate uses. |
-| `sql/` | `executor`, `registry`, `sqlite` | What a database has to offer: run a statement, return rows. The registry loads no adapter until one is asked for by name. |
-| `reporting/` | `report`, `diffing`, `mlflow_backend` | The scorecard, run-to-run diffs, and the only module with an optional dependency. |
+| `reporting/` | `report`, `diffing`, `segments`, `mlflow_backend` | The scorecard, run-to-run diffs, segment breakdowns, and the one module with an optional dependency. |
+| `cli/` | `main`, `config`, `detect`, `drafters`, `logs`, `scaffold`, `telemetry` | The `agent-evals` console script, installed at the agent's root. Needs the `[cli]` extra. |
 
 ### Tests
 
-`pip install -e ".[dev]"` then `pytest`. 479 tests: **461 pass, 18 skip.**
+`pip install -e ".[dev]"` then `pytest`. **718 tests: 697 pass, 21 skip**, in 51 files.
 
 | Folder | Covers |
 |---|---|
-| `core/`, `running/`, `scoring/`, `stats/`, `reporting/` | The matching package folder |
+| One per package folder (`core/`, `running/`, `scoring/`, `stats/`, `reporting/`, `sql/`, `judges/`, `attribution/`, `mining/`, `drafting/`, `cli/`) | The matching package folder |
 | `contract/` | What the package promises as a whole: agent shapes, the self-check, and that the offline examples still run |
 
-The 18 skips need something this repository deliberately does not depend on, and each says so as it
-skips: LangChain for the live example, the `penguiflow` monorepo for the cross-package parity checks,
-and `mlflow` for one reporting test.
+The skips need something this repository deliberately does not depend on, and each says so as it skips: LangChain for
+the live example, the `penguiflow` monorepo for the cross-package parity checks, and `mlflow` for one reporting test.
 
 ### Examples
 

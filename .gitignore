@@ -7,3 +7,21 @@ build/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+
+# Editor, OS and agent-tool noise
+.DS_Store
+.idea/
+.vscode/
+.claude/
+.serena/
+
+# Coverage and logs
+.coverage
+coverage.xml
+htmlcov/
+*.log
+
+# Local environment and notebooks
+.env
+.env.*
+.ipynb_checkpoints/
