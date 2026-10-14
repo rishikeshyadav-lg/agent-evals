@@ -52,9 +52,9 @@ def test_naming_the_right_entity_alongside_others_still_scores_one() -> None:
 def test_an_alias_counts_as_the_entity() -> None:
     """An agent writes the campaign's name, not the id it was asked by."""
 
-    case = _case(aliases=["Progressive Insurance FY26"])
+    case = _case(aliases=["Northwind Insurance FY26"])
 
-    assert _score("Progressive Insurance FY26 delivered 592M impressions.", case).scores["scope"] == 1.0
+    assert _score("Northwind Insurance FY26 delivered 412M impressions.", case).scores["scope"] == 1.0
 
 
 def test_an_answer_naming_nothing_is_unmeasured_not_wrong() -> None:

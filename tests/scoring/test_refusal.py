@@ -45,7 +45,7 @@ def test_answering_a_question_whose_data_does_not_exist_scores_zero() -> None:
 
     scorer = AcceptedRefusal(refused=_declined(False))
 
-    result = asyncio.run(scorer(_case(), PredictionResult(answer="1. Tubi 4,102,118\n2. Pluto 3,884,001")))
+    result = asyncio.run(scorer(_case(), PredictionResult(answer="1. Lumen TV 2,310,004\n2. Harbor Stream 1,886,210")))
 
     assert result.scores["refusal"] == pytest.approx(0.0)
     assert result.details["refusal"]["declined"] is False
@@ -97,7 +97,7 @@ def test_a_wrapped_criterion_does_not_apply_to_a_correct_refusal() -> None:
 def test_a_wrapped_criterion_still_scores_an_answer_that_did_not_refuse() -> None:
     wrapped = WhenNotRefused(criterion=lambda case, output: 0.25, refused=_declined(False))
 
-    assert asyncio.run(wrapped(_case(), PredictionResult(answer="1. Tubi"))) == pytest.approx(0.25)
+    assert asyncio.run(wrapped(_case(), PredictionResult(answer="1. Lumen TV"))) == pytest.approx(0.25)
 
 
 def test_a_wrapped_criterion_scores_normally_when_no_refusal_is_accepted() -> None:
