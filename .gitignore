@@ -8,6 +8,9 @@ build/
 .mypy_cache/
 .pytest_cache/
 
+# Superseded documents, kept on disk as history rather than published
+docs/archive/
+
 # Editor, OS and agent-tool noise
 .DS_Store
 .idea/

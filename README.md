@@ -205,8 +205,7 @@ CHANGELOG.md      version history and known limits
 ```
 
 No `src/` layout, no CI config. Everything is re-exported, so `from agent_evals import ExactMatch` works regardless
-of which folder a name lives in, so you never need to import these paths directly. `docs/archive/` holds superseded
-documents kept for history; nothing in it is current instruction.
+of which folder a name lives in, so you never need to import these paths directly.
 
 ### The package, 63 modules
 
